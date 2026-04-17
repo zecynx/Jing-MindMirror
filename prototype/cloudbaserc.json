@@ -1,0 +1,6 @@
+{
+  "envId": "prism-mvp-d7grhmf61a0b12522",
+  "cloudrun": {
+    "name": "prism-backend"
+  }
+}

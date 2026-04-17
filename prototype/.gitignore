@@ -1,0 +1,28 @@
+# === 环境变量与敏感信息 ===
+.env
+.env.local
+.env.*.local
+*.key
+*.pem
+*.p12
+
+# === 数据存储（用户数据，不提交） ===
+data/
+
+# === Node.js ===
+node_modules/
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+
+# === 操作系统 ===
+.DS_Store
+Thumbs.db
+desktop.ini
+
+# === IDE ===
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
