@@ -34,10 +34,190 @@ function requireUserId(req, res, next) {
 }
 
 // ============================================================
-//  苏格拉底式系统 Prompt 架构（v2 — 深度优化版）
+//  苏格拉底式系统 Prompt 架构（v3 — 双模式：深度追问 + 闪电扫描）
 // ============================================================
 
-function buildSystemPrompt(phase, turnCount, conversationHistory) {
+// --- 闪电模式阶段配置 ---
+const LIGHTNING_PHASES = {
+  quick_define: {
+    name: '快速定性',
+    description: '用一个追问锁定决策核心维度',
+    tone: '直接、轻快，像一个聪明的朋友。不废话，直奔核心。',
+    strategy: `目标：用一个追问锁定这个决定对用户来说最核心的维度是什么。
+
+追问方向：
+1. 找到这个选择的核心取舍——"这件事对你来说，最重要的是什么？"
+2. 如果用户说了两个选项，追问"如果只能保一个，保哪个？为什么？"
+
+关键：一轮就够，不要拖。`,
+    examples: `用户："两个会冲突了，该去哪个？"
+❌ 差："这两个会分别是什么内容？"——在收集信息，不是在帮用户思考
+✅ 好："'冲突'——如果两个会你只能去一个，你去哪个心里会踏实一点？为什么那个更让你踏实？"
+
+用户："中午吃火锅还是寿司？"
+❌ 差："你更喜欢哪种口味？"——太表面
+✅ 好："今天是什么日子——是想犒劳自己，还是想轻快点？答案就在这个感受里。"`,
+    completionCriteria: `用户已明确说了核心维度或倾向。标记 [PHASE_COMPLETE]。`
+  },
+  quick_flip: {
+    name: '两面翻转',
+    description: '快速翻面，让用户看到硬币的另一面',
+    tone: '轻快但有点毒舌，像一个敢说真话的朋友。',
+    strategy: `目标：帮用户快速看到他没看的那一面。
+
+追问方向：
+1. 如果用户倾向A——"选A的话，最让你不舒服的是什么？选B的话，最让你期待的是什么？"
+2. 如果用户倾向B——反过来问
+
+关键：不要超过2句话，一针见血。`,
+    examples: `用户倾向去第一个会
+❌ 差："第二个会也有好处。"——这是在给建议
+✅ 好："去第一个会你会心安，但不去第二个会你会不会后悔？那个后悔能扛住吗？"
+
+用户倾向吃火锅
+❌ 差："寿司也很不错。"——空洞
+✅ 好："火锅满足，但吃完会不会困？下午还有重要的事吗？"`,
+    completionCriteria: `用户已经看到了另一面。标记 [PHASE_COMPLETE]。`
+  },
+  quick_call: {
+    name: '一锤定音',
+    description: '确认直觉 + 轻量后悔测试',
+    tone: '轻快、果断，帮用户收束。像一个拍了拍你肩膀说"去吧"的朋友。',
+    strategy: `目标：帮用户确认直觉，做一个轻量的后悔测试。
+
+追问方向：
+1. "如果现在必须选，你的直觉是什么？"
+2. "3个月后你会因为没选另一个而后悔吗？"
+
+关键：简短收束，不要拖。`,
+    examples: `用户："我觉得还是去第一个会吧"
+❌ 差："那就去第一个会吧。"——这是在替用户做决定
+✅ 好："那就去。3个月后你不会因为没去第二个会而睡不着觉吧？"
+
+用户："就吃火锅吧"
+❌ 差："好的，火锅。"——太顺从
+✅ 好："火锅。选完了——如果吃完觉得不对，你会后悔今天没选寿司吗？"`,
+    completionCriteria: `用户已做出选择或确认了直觉。标记 [CONVERSATION_COMPLETE]。`
+  }
+};
+
+// --- 导航判断：根据用户首条消息判断模式 ---
+async function determineMode(userMessage) {
+  const navPrompt = `你是一个分类器。根据用户的问题，判断应该使用哪种思维模式。
+
+判断维度：
+1. 影响时间跨度：短期（<1月）/ 中期（1-12月） / 长期（>1年）
+2. 可逆性：容易撤销 / 有代价但可逆 / 不可逆
+3. 价值冲突程度：单纯取舍 / 有矛盾但能调和 / 核心价值冲突
+4. 用户情绪投入：随口一提 / 有些纠结 / 反复在想
+
+评分规则：
+- 4项中有2项及以上为"重"（长期/不可逆/核心冲突/反复在想）→ deep
+- 4项中有3项及以上为"轻"（短期/可逆/单纯取舍/随口一提）→ lightning
+- 边界情况 → deep（宁深勿浅）
+
+用户问题："${userMessage}"
+
+只返回一个单词：deep 或 lightning`;
+
+  try {
+    const response = await fetch(`${LLM_BASE_URL}/chat/completions`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'Authorization': `Bearer ${LLM_API_KEY}`
+      },
+      body: JSON.stringify({
+        model: LLM_MODEL,
+        messages: [{ role: 'user', content: navPrompt }],
+        temperature: 0.1,
+        max_tokens: 10,
+      })
+    });
+
+    if (response.ok) {
+      const data = await response.json();
+      const result = data.choices[0].message.content.trim().toLowerCase();
+      if (result === 'lightning') return 'lightning';
+    }
+  } catch (err) {
+    console.error('[Navigation] 模式判断失败，默认深度模式:', err.message);
+  }
+  return 'deep'; // 默认深度
+}
+
+// --- 根据模式和阶段生成 inputHint ---
+function generateInputHint(mode, phase, userLastMessage) {
+  const hints = {
+    deep: {
+      define: '我正在纠结的是…',
+      stance: '我这样想是因为…',
+      premortem: '如果失败了，最可能是因为我…',
+      blindspot: '如果从零开始，我会…',
+      future: '10年后的我可能会觉得…',
+    },
+    lightning: {
+      quick_define: '这件事对我来说最重要的是…',
+      quick_flip: '选另一个的话让我期待的是…',
+      quick_call: '我的直觉是…',
+    }
+  };
+  return (hints[mode] && hints[mode][phase]) || '说出你的想法…';
+}
+
+// --- 闪电模式 System Prompt 构建 ---
+function buildLightningSystemPrompt(phase, turnCount, conversationHistory) {
+  const phaseConfig = LIGHTNING_PHASES[phase] || LIGHTNING_PHASES.quick_define;
+
+  const userMessages = conversationHistory.filter(m => m.role === 'user').map(m => m.content);
+  const stancesSummary = userMessages.length > 0
+    ? `用户已表达的关键立场：\n${userMessages.map((m, i) => `${i + 1}. "${m}"`).join('\n')}`
+    : '用户尚未表达立场。';
+
+  return `你是"棱镜"的闪电模式——一个聪明、直接、不废话的朋友。
+
+## 你的身份
+你不是顾问，你是一个反应快、直觉准、敢说真话的朋友。
+你的风格：直接、轻快、偶尔毒舌，但不刻薄。
+你不是在帮用户做深度决策，而是在帮他3分钟理清一个小选择。
+
+## 当前对话状态
+- 当前阶段：${phaseConfig.name}（第 ${turnCount} 轮）
+- ${stancesSummary}
+
+## 阶段追问策略
+${phaseConfig.strategy}
+
+## 追问示例
+${phaseConfig.examples}
+
+## 硬性约束
+1. **永远不给建议、不给结论**——但可以用反问或镜像帮用户自己看到
+2. **每轮只问一个核心问题**，不铺陈，不超过3句话
+3. **追问必须引用用户的具体用词**——用引号引用原话
+4. **控制在3-5轮内完成**——不要拖
+5. **语气轻快**，不要沉重——这是小事，不用太严肃
+6. **禁止空洞肯定**——不要说"你说得对""我理解"
+7. **禁止是/否问题**——开放式追问
+8. **禁止说"这是一个重要的决定"**——闪电模式就是小事
+
+## 禁止句式
+- "你有没有想过…" / "你是否考虑过…"
+- "你觉得呢？" / "你怎么看？"
+- 任何以"你应该""我建议""最好"开头的话
+
+## 节奏
+${phaseConfig.tone}
+
+## 阶段完成条件
+${phaseConfig.completionCriteria}
+
+阶段切换标记：确认满足完成条件后，在回应最末尾单独一行加上：[PHASE_COMPLETE]
+如果是最后阶段且用户已确认直觉，加上：[CONVERSATION_COMPLETE]`;
+}
+
+// --- 深度模式 System Prompt 构建（v3 增强版：含结构化追问 + inputHint + 过渡语） ---
+function buildDeepSystemPrompt(phase, turnCount, conversationHistory) {
   const phaseConfig = getPhaseConfig(phase);
 
   // 调用上下文富化层获取结构化摘要
@@ -47,6 +227,9 @@ function buildSystemPrompt(phase, turnCount, conversationHistory) {
   const dynamicStrategy = buildDynamicStrategy(phase, turnCount, conversationHistory);
 
   return `你是"棱镜"——一个永远不给你答案的思维伙伴。
+
+## 当前模式：深度追问
+你正在使用深度追问模式，帮助用户对重大决定进行全面的思考。
 
 ## 你的身份
 你不是顾问，不是导师，不是心理医生。
@@ -559,13 +742,29 @@ function responseQualityCheck(content, userLastMessage) {
 
 // --- LLM 代理（前端不再直连 API，Key 安全） ---
 app.post('/api/chat', requireUserId, async (req, res) => {
-  const { messages, phase, turnCount, conversationId } = req.body;
+  const { messages, phase, turnCount, conversationId, mode } = req.body;
 
   if (!LLM_API_KEY) {
     return res.status(500).json({ error: '未配置 LLM_API_KEY，请在 .env 文件中设置' });
   }
 
-  const systemPrompt = buildSystemPrompt(phase, turnCount, messages);
+  // ── 导航判断：首轮根据用户消息判断模式 ──
+  let currentMode = mode || 'deep';
+
+  if (turnCount === 0 && !mode) {
+    const userFirstMsg = messages.filter(m => m.role === 'user').pop()?.content || '';
+    if (userFirstMsg) {
+      currentMode = await determineMode(userFirstMsg);
+    }
+  }
+
+  // ── 根据模式构建 System Prompt ──
+  let systemPrompt;
+  if (currentMode === 'lightning') {
+    systemPrompt = buildLightningSystemPrompt(phase || 'quick_define', turnCount, messages);
+  } else {
+    systemPrompt = buildDeepSystemPrompt(phase || 'define', turnCount, messages);
+  }
 
   const apiMessages = [
     { role: 'system', content: systemPrompt },
@@ -577,7 +776,7 @@ app.post('/api/chat', requireUserId, async (req, res) => {
     userId: req.userId,
     type: 'message_send',
     conversationId,
-    data: { phase, turnCount, role: messages[messages.length - 1]?.role }
+    data: { phase, turnCount, role: messages[messages.length - 1]?.role, mode: currentMode }
   });
 
   // 获取用户最后一条消息，用于质量检查
@@ -594,11 +793,11 @@ app.post('/api/chat', requireUserId, async (req, res) => {
       body: JSON.stringify({
         model: LLM_MODEL,
         messages: apiMessages,
-        temperature: 0.5,        // 降低随机性，提升追问的一致性和针对性
-        max_tokens: 800,         // 避免长追问被截断
-        top_p: 0.85,             // 收窄采样范围
-        frequency_penalty: 0.3,  // 惩罚重复句式
-        presence_penalty: 0.1,   // 轻微鼓励多样化表达
+        temperature: currentMode === 'lightning' ? 0.6 : 0.5,
+        max_tokens: currentMode === 'lightning' ? 400 : 800,
+        top_p: 0.85,
+        frequency_penalty: 0.3,
+        presence_penalty: 0.1,
       })
     });
 
@@ -709,7 +908,9 @@ app.post('/api/chat', requireUserId, async (req, res) => {
     res.json({
       content,
       phaseComplete,
-      conversationComplete
+      conversationComplete,
+      mode: currentMode,
+      inputHint: generateInputHint(currentMode, phase, userLastMessage),
     });
 
   } catch (err) {
@@ -724,12 +925,30 @@ app.post('/api/snapshot', requireUserId, async (req, res) => {
     return res.status(500).json({ error: '未配置 LLM_API_KEY' });
   }
 
-  const { messages } = req.body;
+  const { messages, mode } = req.body;
   if (!messages || !Array.isArray(messages)) {
     return res.status(400).json({ error: '缺少对话消息' });
   }
 
-  const extractPrompt = `请从以下对话中提取决策快照信息，以 JSON 格式返回。不要包含任何其他文字。
+  // 根据模式选择不同的提取模板
+  const isLightning = mode === 'lightning';
+
+  const extractPrompt = isLightning
+    ? `请从以下闪电扫描对话中提取简短思考摘要，以 JSON 格式返回。不要包含任何其他文字。
+
+对话内容：
+${messages.map(m => `${m.role === 'user' ? '用户' : '棱镜'}：${m.content}`).join('\n')}
+
+请返回如下 JSON：
+{
+  "title": "决策的简短标题（15字以内）",
+  "type": "日常/职业/关系/消费/其他",
+  "core_dimension": "这个决定对用户来说最核心的维度（1句话）",
+  "flip_insight": "用户可能忽略的另一面（1句话）",
+  "gut_feeling": "用户的直觉倾向（1句话）",
+  "regret_test": "后悔测试结果——如果不选另一个，会后悔吗？（1句话）"
+}`
+    : `请从以下对话中提取决策快照信息，以 JSON 格式返回。不要包含任何其他文字。
 
 对话内容：
 ${messages.map(m => `${m.role === 'user' ? '用户' : '棱镜'}：${m.content}`).join('\n')}
@@ -865,7 +1084,7 @@ app.get('/api/health', (req, res) => {
 
 const PORT = process.env.PORT || 3000;
 app.listen(PORT, () => {
-  console.log(`\n🔮 思维棱镜原型服务器已启动`);
+  console.log(`\n🔮 镜·MindLens V2 服务器已启动`);
   console.log(`   地址: http://localhost:${PORT}`);
   console.log(`   LLM:  ${LLM_MODEL} @ ${LLM_BASE_URL}`);
   if (!LLM_API_KEY) {

@@ -380,6 +380,27 @@
     border-radius: 12px; margin-bottom: 8px;
     animation: slideUp 0.3s ease-out;
   }
+
+  /* ========== 模式切换提示 ========== */
+  .mode-switch-bar {
+    display: flex; align-items: center; justify-content: center;
+    gap: 10px; padding: 8px 16px;
+    background: rgba(106, 239, 200, 0.08);
+    border: 1px solid rgba(106, 239, 200, 0.15);
+    border-radius: 12px; margin-bottom: 8px;
+    animation: slideUp 0.3s ease-out;
+  }
+  .mode-switch-text {
+    font-size: 12.5px; color: var(--text-secondary);
+  }
+  .mode-switch-btn {
+    height: 32px; padding: 0 18px; border: none; border-radius: 16px;
+    font-size: 13px; font-weight: 500; cursor: pointer;
+    font-family: 'Noto Sans SC', sans-serif;
+    background: linear-gradient(135deg, var(--teal) 0%, #5ad4b0 100%);
+    color: var(--bg-primary); transition: all 0.2s; white-space: nowrap;
+  }
+  .mode-switch-btn:hover { transform: translateY(-1px); box-shadow: 0 2px 12px var(--teal-dim); }
   @keyframes slideUp {
     from { opacity: 0; transform: translateY(8px); }
     to { opacity: 1; transform: translateY(0); }
@@ -573,7 +594,7 @@
 
   <button class="start-btn" onclick="startConversation()">开始思考</button>
 
-  <div class="home-footer">MVP PROTOTYPE · v0.4 · QUALITY-GATE</div>
+  <div class="home-footer">MINDLENS V2 · DEEP + LIGHTNING · AI-NAV</div>
 </div>
 
 <!-- ==================== 对话页 ==================== -->
@@ -590,6 +611,7 @@
       </div>
     </div>
     <div class="chat-header-right">
+      <span class="mode-tag" id="modeTag" style="font-size:10px;padding:2px 8px;border-radius:8px;background:var(--accent-dim);color:var(--accent);margin-right:6px;display:none;">深度追问</span>
       <span class="phase-label" id="phaseLabel">定义决策</span>
       <span class="phase-turn-count" id="phaseTurnCount" style="font-size:11px;color:var(--text-tertiary);margin-left:8px;"></span>
     </div>
@@ -598,6 +620,10 @@
   <div class="chat-messages" id="chatMessages"></div>
 
   <div class="chat-input-area">
+    <div id="modeSwitchBar" class="mode-switch-bar" style="display:none;">
+      <span class="mode-switch-text">想更深入地想？</span>
+      <button class="mode-switch-btn" onclick="switchToDeep()">切换深度追问 →</button>
+    </div>
     <div id="advanceBar" class="advance-bar" style="display:none;">
       <span class="advance-text">你想进入下一阶段吗？</span>
       <button class="advance-btn" onclick="advanceManually()">进入下一阶段 →</button>
@@ -753,6 +779,7 @@ async function checkServerHealth() {
 // ============================================================
 const state = {
   currentPage: 'home',
+  mode: 'deep',           // 'deep' | 'lightning'
   currentPhase: 'define',
   phaseTurnCount: 0,     // 当前阶段内的轮数
   totalTurnCount: 0,     // 总轮数
@@ -764,12 +791,11 @@ const state = {
   conversationId: null,   // 服务端对话ID
   phaseStartTime: Date.now(), // 当前阶段开始时间（用于检测停留过短）
   recentUserLengths: [],  // 最近用户回答长度（用于深入度判断）
+  inputHint: '',          // AI 返回的输入框预填充提示
 };
 
-// 每个阶段的弹性轮数区间：minTurns=LLM可提前推进, maxTurns=保底推进
-// LLM 在 [minTurns, maxTurns] 区间内自主判断用户思考深度
-// v2 调优：核心阶段 minTurns 提高，防止过早推进；maxTurns 适度放宽，给深度追问留空间
-const PHASES = [
+// 深度模式阶段配置
+const PHASES_DEEP = [
   { id: 'define',    label: '定义决策',   color: 'var(--accent)', minTurns: 1, maxTurns: 3 },
   { id: 'stance',    label: '立场澄清',   color: 'var(--warm)',   minTurns: 3, maxTurns: 6 },
   { id: 'premortem', label: 'Pre-Mortem', color: 'var(--rose)',   minTurns: 3, maxTurns: 5 },
@@ -777,7 +803,21 @@ const PHASES = [
   { id: 'future',    label: '未来回望',   color: 'var(--teal)',   minTurns: 1, maxTurns: 3 },
 ];
 
-const PHASE_ORDER = PHASES.map(p => p.id);
+// 闪电模式阶段配置
+const PHASES_LIGHTNING = [
+  { id: 'quick_define', label: '快速定性', color: 'var(--accent)', minTurns: 1, maxTurns: 2 },
+  { id: 'quick_flip',   label: '两面翻转', color: 'var(--warm)',   minTurns: 1, maxTurns: 2 },
+  { id: 'quick_call',   label: '一锤定音', color: 'var(--teal)',   minTurns: 1, maxTurns: 2 },
+];
+
+// 根据当前模式获取阶段列表
+function getCurrentPhases() {
+  return state.mode === 'lightning' ? PHASES_LIGHTNING : PHASES_DEEP;
+}
+
+// 兼容旧代码
+const PHASES = PHASES_DEEP;
+const PHASE_ORDER = PHASES_DEEP.map(p => p.id);
 
 // ============================================================
 //  LLM API 调用 — 通过服务端代理（API Key 不暴露给前端）
@@ -795,6 +835,7 @@ async function callLLM(userMessage) {
       phase: state.currentPhase,
       turnCount: state.phaseTurnCount,
       conversationId: state.conversationId,
+      mode: state.mode,
     }),
   });
 
@@ -823,6 +864,8 @@ function startConversation() {
     return;
   }
 
+  // 重置状态
+  state.mode = 'deep'; // 初始默认深度，首轮由 AI 导航判断
   state.currentPhase = 'define';
   state.phaseTurnCount = 0;
   state.totalTurnCount = 0;
@@ -834,9 +877,11 @@ function startConversation() {
   state.conversationId = null;
   state.phaseStartTime = Date.now();
   state.recentUserLengths = [];
+  state.inputHint = '';
 
   // 清理上一轮可能残留的 UI
   hideAdvanceOption();
+  hideModeSwitch();
 
   document.getElementById('chatMessages').innerHTML = '';
   document.getElementById('chatInput').value = '';
@@ -853,22 +898,45 @@ function startConversation() {
 }
 
 function updatePhaseUI() {
-  const phaseIndex = PHASE_ORDER.indexOf(state.currentPhase);
+  const phases = getCurrentPhases();
+  const phaseIds = phases.map(p => p.id);
+  const phaseIndex = phaseIds.indexOf(state.currentPhase);
   const indicator = document.getElementById('phaseIndicator');
   const dots = indicator.querySelectorAll('.phase-dot');
   const label = document.getElementById('phaseLabel');
   const turnCountEl = document.getElementById('phaseTurnCount');
+  const modeTag = document.getElementById('modeTag');
 
-  dots.forEach((dot, i) => {
-    dot.classList.remove('active', 'completed');
+  // 更新进度点数量和状态
+  // 先清理旧的点，重建
+  indicator.innerHTML = '';
+  for (let i = 0; i < phases.length; i++) {
+    const dot = document.createElement('div');
+    dot.className = 'phase-dot';
     if (i < phaseIndex) dot.classList.add('completed');
     else if (i === phaseIndex) dot.classList.add('active');
-  });
+    indicator.appendChild(dot);
+  }
 
-  const phaseObj = PHASES.find(p => p.id === state.currentPhase);
+  const phaseObj = phases.find(p => p.id === state.currentPhase);
   if (phaseObj) {
     label.textContent = phaseObj.label;
     label.style.color = phaseObj.color;
+  }
+
+  // 模式标签
+  if (modeTag) {
+    if (state.mode === 'lightning') {
+      modeTag.textContent = '闪电扫描';
+      modeTag.style.background = 'var(--teal-dim)';
+      modeTag.style.color = 'var(--teal)';
+      modeTag.style.display = 'inline';
+    } else {
+      modeTag.textContent = '深度追问';
+      modeTag.style.background = 'var(--accent-dim)';
+      modeTag.style.color = 'var(--accent)';
+      modeTag.style.display = 'inline';
+    }
   }
 
   // 调试信息：显示当前阶段轮数/区间
@@ -878,18 +946,22 @@ function updatePhaseUI() {
 }
 
 function advancePhase() {
-  const currentIndex = PHASE_ORDER.indexOf(state.currentPhase);
-  if (currentIndex < PHASE_ORDER.length - 1) {
-    state.currentPhase = PHASE_ORDER[currentIndex + 1];
+  const phases = getCurrentPhases();
+  const phaseIds = phases.map(p => p.id);
+  const currentIndex = phaseIds.indexOf(state.currentPhase);
+  if (currentIndex < phaseIds.length - 1) {
+    state.currentPhase = phaseIds[currentIndex + 1];
     updatePhaseUI();
   }
 }
 
 function doPhaseAdvance() {
   // 先显示当前阶段的完成提示，再推进到下一阶段
-  const oldPhaseObj = PHASES.find(p => p.id === state.currentPhase);
-  const nextIndex = PHASE_ORDER.indexOf(state.currentPhase) + 1;
-  const nextPhaseObj = nextIndex < PHASES.length ? PHASES[nextIndex] : null;
+  const phases = getCurrentPhases();
+  const phaseIds = phases.map(p => p.id);
+  const oldPhaseObj = phases.find(p => p.id === state.currentPhase);
+  const nextIndex = phaseIds.indexOf(state.currentPhase) + 1;
+  const nextPhaseObj = nextIndex < phases.length ? phases[nextIndex] : null;
 
   // 计算阶段停留时间和用户深入度信号
   const phaseDuration = Math.round((Date.now() - state.phaseStartTime) / 1000); // 秒
@@ -953,7 +1025,40 @@ function showAdvanceOption(llmSaysComplete = false) {
 function hideAdvanceOption() {
   const bar = document.getElementById('advanceBar');
   if (bar) bar.style.display = 'none';
-  document.getElementById('chatInput').placeholder = '说出你的想法…';
+  document.getElementById('chatInput').placeholder = state.inputHint || '说出你的想法…';
+}
+
+function showModeSwitch() {
+  const bar = document.getElementById('modeSwitchBar');
+  if (bar && state.mode === 'lightning') bar.style.display = 'flex';
+}
+
+function hideModeSwitch() {
+  const bar = document.getElementById('modeSwitchBar');
+  if (bar) bar.style.display = 'none';
+}
+
+function switchToDeep() {
+  hideModeSwitch();
+  // 切换到深度模式，重置到深度模式的 define 阶段
+  state.mode = 'deep';
+  state.currentPhase = 'define';
+  state.phaseTurnCount = 0;
+  state.phaseStartTime = Date.now();
+  state.recentUserLengths = [];
+  updatePhaseUI();
+  addDisplayMessage('phase', '▸ 切换到深度追问模式');
+
+  // 触发 AI 的深度模式追问
+  triggerAiFollowUp();
+}
+
+function updateInputHint(hint) {
+  state.inputHint = hint || '';
+  const input = document.getElementById('chatInput');
+  if (input && !input.value) {
+    input.placeholder = state.inputHint || '说出你的想法…';
+  }
 }
 
 function advanceManually() {
@@ -988,14 +1093,18 @@ async function triggerAiFollowUp() {
     addDisplayMessage('ai', content);
 
     // 阶段推进逻辑（与 sendMessage 一致）
-    const currentPhaseConfig = PHASES.find(p => p.id === state.currentPhase);
+    const phases = getCurrentPhases();
+    const currentPhaseConfig = phases.find(p => p.id === state.currentPhase);
     const minT = currentPhaseConfig ? currentPhaseConfig.minTurns : 99;
     const maxT = currentPhaseConfig ? currentPhaseConfig.maxTurns : 99;
     const reachedMin = state.phaseTurnCount >= minT;
     const reachedMax = state.phaseTurnCount >= maxT;
-    const isTransitional = state.currentPhase === 'define' || state.currentPhase === 'future';
+    const isTransitional = state.currentPhase === 'define'
+      || state.currentPhase === 'future'
+      || state.currentPhase === 'quick_define'
+      || state.currentPhase === 'quick_call';
 
-    if (conversationComplete || (state.currentPhase === 'future' && reachedMin)) {
+    if (conversationComplete || (state.currentPhase === 'future' && reachedMin) || (state.currentPhase === 'quick_call' && reachedMin)) {
       state.conversationComplete = true;
       setTimeout(() => generateSnapshot(), 800);
     } else if (reachedMax) {
@@ -1063,19 +1172,49 @@ async function sendMessage() {
     state.totalTurnCount++;
     // 追踪用户回答长度（深入度信号）
     state.recentUserLengths.push(text.length);
+
+    // ── 处理 AI 导航返回的 mode ──
+    if (result.mode && state.totalTurnCount <= 1) {
+      const prevMode = state.mode;
+      state.mode = result.mode;
+      if (state.mode === 'lightning') {
+        state.currentPhase = 'quick_define';
+      }
+      if (prevMode !== state.mode) {
+        addDisplayMessage('phase', state.mode === 'lightning'
+          ? '▸ 闪电扫描模式 — 3分钟理清'
+          : '▸ 深度追问模式 — 帮你想完整');
+      }
+    }
+
+    // ── 更新 inputHint ──
+    if (result.inputHint) {
+      updateInputHint(result.inputHint);
+    }
+
+    // ── 闪电模式显示切换按钮 ──
+    if (state.mode === 'lightning') {
+      showModeSwitch();
+    }
+
     updatePhaseUI();  // 更新轮数显示
 
     hideTyping();
     addDisplayMessage('ai', result.content);
 
-    // === 弹性区间阶段推进（v2: 增加用户深入度判断） ===
-    const currentPhaseConfig = PHASES.find(p => p.id === state.currentPhase);
+    // === 弹性区间阶段推进（v3: 双模式支持） ===
+    const phases = getCurrentPhases();
+    const phaseIds = phases.map(p => p.id);
+    const currentPhaseConfig = phases.find(p => p.id === state.currentPhase);
     const minT = currentPhaseConfig ? currentPhaseConfig.minTurns : 99;
     const maxT = currentPhaseConfig ? currentPhaseConfig.maxTurns : 99;
     const reachedMin = state.phaseTurnCount >= minT;
     const reachedMax = state.phaseTurnCount >= maxT;
-    // define 和 future 是过渡/收尾阶段，不需要用户确认直接推进
-    const isTransitional = state.currentPhase === 'define' || state.currentPhase === 'future';
+    // 过渡/收尾阶段不需要用户确认直接推进
+    const isTransitional = state.currentPhase === 'define'
+      || state.currentPhase === 'future'
+      || state.currentPhase === 'quick_define'
+      || state.currentPhase === 'quick_call';
 
     // ── 用户深入度信号计算 ──
     const recentLengths = state.recentUserLengths.slice(-3); // 最近3次回答
@@ -1087,13 +1226,13 @@ async function sendMessage() {
     const phaseDuration = Math.round((Date.now() - state.phaseStartTime) / 1000);
     const isTooFast = phaseDuration < 30 && state.phaseTurnCount >= minT; // 阶段停留过短
 
-    if (result.conversationComplete || (state.currentPhase === 'future' && reachedMin)) {
+    if (result.conversationComplete || (state.currentPhase === 'future' && reachedMin) || (state.currentPhase === 'quick_call' && reachedMin)) {
       // 对话完成
       state.conversationComplete = true;
       setTimeout(() => generateSnapshot(), 800);
 
-    } else if (state.currentPhase === 'future' && reachedMin && !result.conversationComplete) {
-      // future 阶段到最低轮数但 LLM 没给完成标记，强制完成
+    } else if ((state.currentPhase === 'future' || state.currentPhase === 'quick_call') && reachedMin && !result.conversationComplete) {
+      // 终阶段到最低轮数但 LLM 没给完成标记，强制完成
       state.conversationComplete = true;
       setTimeout(() => generateSnapshot(), 800);
 
@@ -1166,15 +1305,19 @@ function autoResize(el) {
 
 async function generateSnapshot() {
   // 埋点：快照生成
-  trackEvent('snapshot_generate', { totalTurns: state.totalTurns });
+  trackEvent('snapshot_generate', { totalTurns: state.totalTurns, mode: state.mode });
 
   try {
     const data = await apiFetch('/api/snapshot', {
       method: 'POST',
-      body: JSON.stringify({ messages: state.messages }),
+      body: JSON.stringify({ messages: state.messages, mode: state.mode }),
     });
     state.snapshotData = data;
-    renderSnapshot(data);
+    if (state.mode === 'lightning') {
+      renderLightningSummary(data);
+    } else {
+      renderSnapshot(data);
+    }
     return;
   } catch(e) {
     console.error('快照生成失败，使用备用方案', e);
@@ -1319,6 +1462,78 @@ function renderSnapshot(data) {
 }
 
 // ============================================================
+//  闪电模式简短摘要渲染
+// ============================================================
+
+function renderLightningSummary(data) {
+  const now = new Date();
+
+  // 保存到日志（简化版）
+  const journalEntry = {
+    id: Date.now(),
+    title: data.title || '日常选择',
+    type: data.type || '日常',
+    mode: 'lightning',
+    stances: data.core_dimension || '',
+    core_dimension: data.core_dimension || '',
+    flip_insight: data.flip_insight || '',
+    gut_feeling: data.gut_feeling || '',
+    regret_test: data.regret_test || '',
+    confidence: null,
+    createdAt: now.toISOString(),
+    messages: state.messages.slice()
+  };
+  addJournalEntry(journalEntry);
+
+  // 埋点：闪电模式完成
+  trackEvent('lightning_complete', {
+    title: data.title,
+    type: data.type,
+    totalTurns: state.totalTurns,
+  });
+
+  const html = `
+    <div class="snapshot-card">
+      <div class="card-icon teal">⚡</div>
+      <div class="card-label">闪电扫描完成</div>
+      <div class="card-value" style="font-size:18px;font-weight:600;">${data.title || '你的选择'}</div>
+      <div style="margin-top:8px;">
+        <span style="font-size:11px;padding:3px 8px;background:var(--teal-dim);color:var(--teal);border-radius:8px;">${data.type || '日常'}</span>
+      </div>
+    </div>
+
+    <div class="snapshot-card">
+      <div class="card-icon purple">🎯</div>
+      <div class="card-label">核心维度</div>
+      <div class="card-value">${data.core_dimension || '你已识别了这个选择对你最重要的东西'}</div>
+    </div>
+
+    <div class="snapshot-card">
+      <div class="card-icon gold">👁</div>
+      <div class="card-label">你可能忽略了</div>
+      <div class="card-value">${data.flip_insight || '试着想想另一面的好处'}</div>
+    </div>
+
+    <div class="snapshot-card">
+      <div class="card-icon orange">💡</div>
+      <div class="card-label">你的直觉</div>
+      <div class="card-value">${data.gut_feeling || '相信你的第一反应'}</div>
+    </div>
+
+    <div class="snapshot-card">
+      <div class="card-icon rose">🔮</div>
+      <div class="card-label">后悔测试</div>
+      <div class="card-value">${data.regret_test || '如果不选另一个，你会后悔吗？'}</div>
+    </div>
+
+    <button class="done-btn" onclick="goHome()">好的，想清楚了</button>
+  `;
+
+  document.getElementById('snapshotContent').innerHTML = html;
+  switchPage('snapshot');
+}
+
+// ============================================================
 //  日志列表页
 // ============================================================
 
@@ -1347,13 +1562,14 @@ function showJournal() {
           <div class="journal-card-meta">
             <span>📅 ${createdStr}</span>
             <span>💬 ${Math.floor(entry.messages.length / 2)} 轮对话</span>
+            <span>${entry.mode === 'lightning' ? '⚡' : '🔮'}</span>
           </div>
-          <div class="journal-card-calibration ${isOverdue ? 'overdue' : ''}">
+          ${entry.confidence && entry.calibrationDate ? `<div class="journal-card-calibration ${isOverdue ? 'overdue' : ''}">
             ${isOverdue 
               ? `⚠️ 校准时间已过 ${Math.abs(daysLeft)} 天` 
               : `⏳ 距校准还有 ${daysLeft} 天`}
-          </div>
-          <div class="journal-card-stances">${entry.stances}</div>
+          </div>` : ''}
+          <div class="journal-card-stances">${entry.stances || entry.core_dimension || ''}</div>
         </div>
       `;
     }).join('');
@@ -1367,6 +1583,51 @@ function viewJournalEntry(id) {
   const entry = journal.find(e => e.id === parseInt(id));
   if (!entry) return;
 
+  // 闪电模式日志显示简化版
+  if (entry.mode === 'lightning') {
+    const html = `
+      <div class="snapshot-card">
+        <div class="card-icon teal">⚡</div>
+        <div class="card-label">闪电扫描</div>
+        <div class="card-value" style="font-size:18px;font-weight:600;">${entry.title}</div>
+        <div style="margin-top:8px;">
+          <span style="font-size:11px;padding:3px 8px;background:var(--teal-dim);color:var(--teal);border-radius:8px;">${entry.type || '日常'}</span>
+        </div>
+      </div>
+
+      <div class="snapshot-card">
+        <div class="card-icon purple">🎯</div>
+        <div class="card-label">核心维度</div>
+        <div class="card-value">${entry.core_dimension || entry.stances || ''}</div>
+      </div>
+
+      <div class="snapshot-card">
+        <div class="card-icon gold">👁</div>
+        <div class="card-label">你可能忽略了</div>
+        <div class="card-value">${entry.flip_insight || ''}</div>
+      </div>
+
+      <div class="snapshot-card">
+        <div class="card-icon orange">💡</div>
+        <div class="card-label">你的直觉</div>
+        <div class="card-value">${entry.gut_feeling || ''}</div>
+      </div>
+
+      <div class="snapshot-card">
+        <div class="card-icon rose">🔮</div>
+        <div class="card-label">后悔测试</div>
+        <div class="card-value">${entry.regret_test || ''}</div>
+      </div>
+
+      <button class="done-btn" onclick="showJournal()">返回列表</button>
+    `;
+
+    document.getElementById('snapshotContent').innerHTML = html;
+    switchPage('snapshot');
+    return;
+  }
+
+  // 深度模式日志显示完整快照
   const calDate = new Date(entry.calibrationDate);
   const calDateStr = `${calDate.getFullYear()}年${calDate.getMonth() + 1}月${calDate.getDate()}日`;
 
