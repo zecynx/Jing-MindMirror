@@ -865,7 +865,7 @@ function startConversation() {
   }
 
   // 重置状态
-  state.mode = 'deep'; // 初始默认深度，首轮由 AI 导航判断
+  state.mode = null; // 首轮由 AI 导航判断
   state.currentPhase = 'define';
   state.phaseTurnCount = 0;
   state.totalTurnCount = 0;
@@ -924,9 +924,11 @@ function updatePhaseUI() {
     label.style.color = phaseObj.color;
   }
 
-  // 模式标签
+  // 模式标签（首轮 AI 判断前不显示）
   if (modeTag) {
-    if (state.mode === 'lightning') {
+    if (state.totalTurnCount < 1) {
+      modeTag.style.display = 'none';
+    } else if (state.mode === 'lightning') {
       modeTag.textContent = '闪电扫描';
       modeTag.style.background = 'var(--teal-dim)';
       modeTag.style.color = 'var(--teal)';

@@ -29,6 +29,7 @@ desktop.ini
 dist/
 build/
 
-# === 工具配置（个人/敏感） ===
-.codebuddy/integration/
+# === CodeBuddy & CloudBase 工具配置 ===
+.codebuddy/
 .workbuddy/
+cloudbaserc.json

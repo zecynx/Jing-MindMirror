@@ -103,22 +103,15 @@ const LIGHTNING_PHASES = {
 
 // --- 导航判断：根据用户首条消息判断模式 ---
 async function determineMode(userMessage) {
-  const navPrompt = `你是一个分类器。根据用户的问题，判断应该使用哪种思维模式。
+  const navPrompt = `判断这个问题需要深度思考还是快速理清。
 
-判断维度：
-1. 影响时间跨度：短期（<1月）/ 中期（1-12月） / 长期（>1年）
-2. 可逆性：容易撤销 / 有代价但可逆 / 不可逆
-3. 价值冲突程度：单纯取舍 / 有矛盾但能调和 / 核心价值冲突
-4. 用户情绪投入：随口一提 / 有些纠结 / 反复在想
+判断标准：
+- lightning（闪电扫描）：日常小选择、短期影响、容易改主意、随便纠结一下就好。比如吃什么、买哪个颜色、去哪玩。
+- deep（深度追问）：重大决定、长期影响、不可逆、涉及核心价值或人生方向。比如换工作、要不要分手、搬家、投资大额。
 
-评分规则：
-- 4项中有2项及以上为"重"（长期/不可逆/核心冲突/反复在想）→ deep
-- 4项中有3项及以上为"轻"（短期/可逆/单纯取舍/随口一提）→ lightning
-- 边界情况 → deep（宁深勿浅）
+用户说："${userMessage}"
 
-用户问题："${userMessage}"
-
-只返回一个单词：deep 或 lightning`;
+这更像日常小事还是重大决定？只返回一个词：lightning 或 deep`;
 
   try {
     const response = await fetch(`${LLM_BASE_URL}/chat/completions`, {
@@ -138,7 +131,8 @@ async function determineMode(userMessage) {
     if (response.ok) {
       const data = await response.json();
       const result = data.choices[0].message.content.trim().toLowerCase();
-      if (result === 'lightning') return 'lightning';
+      console.log('[Navigation] LLM 原始返回:', JSON.stringify(result));
+      if (result.includes('lightning') || result.includes('闪电')) return 'lightning';
     }
   } catch (err) {
     console.error('[Navigation] 模式判断失败，默认深度模式:', err.message);
@@ -751,10 +745,14 @@ app.post('/api/chat', requireUserId, async (req, res) => {
   // ── 导航判断：首轮根据用户消息判断模式 ──
   let currentMode = mode || 'deep';
 
+  console.log('[DEBUG] 接收参数:', { turnCount, mode, messagesCount: messages.length });
+
   if (turnCount === 0 && !mode) {
     const userFirstMsg = messages.filter(m => m.role === 'user').pop()?.content || '';
+    console.log('[DEBUG] 进入导航判断, 用户消息:', userFirstMsg);
     if (userFirstMsg) {
       currentMode = await determineMode(userFirstMsg);
+      console.log('[DEBUG] 导航判断结果:', currentMode);
     }
   }
 
