@@ -33,3 +33,15 @@ build/
 .codebuddy/
 .workbuddy/
 cloudbaserc.json
+
+# === 归档:旧版本快照(用 git tag v2.0-pre-redesign 作为权威备份) ===
+archive/
+
+# === Claude Code 本地状态 ===
+.claude/
+
+# === OMC 工具状态(本地缓存,不入库) ===
+.omc/
+
+# === 无关 demo / 试验目录 ===
+demo-c/

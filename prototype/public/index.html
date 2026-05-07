@@ -1,0 +1,109 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+<title>镜 — 帮你想完整</title>
+<script>
+  // 部署时由 CloudBase 静态托管覆盖；本地开发同源
+  window.__API_BASE__ = '';
+</script>
+<link rel="stylesheet" href="styles.css">
+</head>
+<body>
+<!-- ============ 起始屏 ============ -->
+<section class="screen active" id="screen-home">
+  <div class="home-warning" id="homeWarning">服务器未就绪,请检查后端 API Key 配置</div>
+  <div class="home-content">
+    <div class="logo">镜</div>
+    <div class="logo-sub">帮你想完整</div>
+    <h2 class="ask">你今天，<br>在纠结什么？</h2>
+    <textarea class="home-input" id="homeInput" placeholder="说一件事…" rows="3"></textarea>
+    <button class="hint-toggle on" id="hintToggle" data-on="true">
+      <span class="hint-dot"></span>
+      <span class="hint-label">显示提示</span>
+      <span class="hint-sub">卡住时给一些思考方向</span>
+    </button>
+    <button class="home-btn" id="homeBtn">开 始</button>
+  </div>
+  <div class="home-footer">
+    <button class="footer-link" onclick="showJournal()">历史决策</button>
+  </div>
+</section>
+
+<!-- ============ 对话屏 ============ -->
+<section class="screen" id="screen-dialogue">
+  <div class="light-beam" id="lightBeam"></div>
+  <header class="dialogue-header">
+    <button class="back-btn" onclick="goHome()">←</button>
+    <span class="brand-mark">镜</span>
+    <span class="top-bar-spacer"></span>
+  </header>
+  <main class="question-area">
+    <div class="question-text" id="questionText"></div>
+  </main>
+  <div class="scaffold-card" id="scaffoldCard">
+    <button class="scaffold-toggle" id="scaffoldToggle" type="button">
+      <span class="scaffold-icon">💡</span>
+      <span class="scaffold-label">给我一些方向</span>
+      <span class="scaffold-arrow">↓</span>
+    </button>
+    <div class="scaffold-content" id="scaffoldContent"></div>
+  </div>
+  <div class="input-bar" id="inputBar">
+    <textarea class="reply-input" id="replyInput" placeholder="写下你的回答…" rows="1" disabled></textarea>
+    <button class="reply-btn" id="replyBtn" disabled>↑</button>
+  </div>
+  <div class="completion-bar" id="completionBar">
+    <div class="completion-hint">这次的思考，已经全部说出来了。</div>
+    <button class="completion-btn" id="viewSnapshotBtn">看你的决策快照 →</button>
+  </div>
+  <div class="status-bar">
+    <span class="phase-badge" id="phaseBadge">定义 <span class="num">1 / 5</span></span>
+    <button class="history-toggle" id="historyToggle">回看 ↑</button>
+  </div>
+</section>
+
+<!-- ============ 历史回看 (overlay) ============ -->
+<div class="history-overlay" id="historyOverlay">
+  <div class="history-inner">
+    <div class="history-header">
+      <span>到此为止你说过的话</span>
+      <button class="history-close" id="historyClose">收起 ↓</button>
+    </div>
+    <ul class="history-list" id="historyList">
+      <li class="history-empty">还没有对话</li>
+    </ul>
+  </div>
+</div>
+
+<!-- ============ 决策快照 ============ -->
+<section class="screen" id="screen-snapshot">
+  <header class="dialogue-header">
+    <button class="back-btn" onclick="goHome()">←</button>
+    <span class="brand-mark">镜</span>
+    <span class="top-bar-spacer"></span>
+  </header>
+  <main class="snapshot-area" id="snapshotContent"></main>
+</section>
+
+<!-- ============ 历史决策列表 ============ -->
+<section class="screen" id="screen-journal">
+  <header class="dialogue-header">
+    <button class="back-btn" onclick="goHome()">←</button>
+    <span class="brand-mark">历史决策</span>
+    <span class="top-bar-spacer"></span>
+  </header>
+  <main class="journal-area">
+    <div class="journal-empty" id="journalEmpty" style="display:none;">
+      <p>还没有决策记录</p>
+      <p class="journal-empty-sub">想清楚一件事，从这里开始</p>
+      <button class="end-btn primary" onclick="goHome()">回到首页</button>
+    </div>
+    <ul class="journal-list" id="journalList"></ul>
+  </main>
+</section>
+
+<script src="app.js"></script>
+</body>
+</html>

@@ -86,20 +86,44 @@ npm start
 
 ```
 prototype/
-├── server.js          # Express 后端（LLM 代理 + 数据 API）
-├── db.js              # JSON 文件数据库模块
-├── index.html         # 前端单页应用
-├── Dockerfile         # Cloud Run 容器配置
-├── .dockerignore      # Docker 忽略文件
-├── .env.example       # 环境变量模板
-├── .env               # 环境变量（不提交）
-├── .gitignore         # Git 忽略文件
-├── package.json       # Node.js 依赖
-└── data/              # 数据存储（不提交）
+├── server.js              # Express 启动器(挂路由 + 静态托管)
+├── llm-config.js          # LLM 配置(从 .env 读取)
+├── db.js                  # JSON 文件数据库
+│
+├── prompts/               # Prompt 工程层
+│   ├── phases.js          # 5 阶段 angle/temperature/scaffolding 表
+│   ├── deep-prompt.js     # 深度模式 system prompt 构建 + 上下文富化
+│   └── quality-gate.js    # LLM 回复质量守门(8 条规则 + 重试)
+│
+├── routes/                # API 路由
+│   ├── chat.js            # /api/chat /api/snapshot
+│   ├── conversations.js   # /api/conversations CRUD
+│   └── system.js          # /api/health /api/stats /api/user /api/events
+│
+├── middleware/
+│   └── require-user.js    # x-user-id 中间件
+│
+├── public/                # 静态前端(Express static 根)
+│   ├── index.html         # HTML 骨架(~110 行)
+│   ├── styles.css         # 全局样式
+│   └── app.js             # 主前端逻辑
+│
+├── Dockerfile             # Cloud Run 容器配置
+├── .dockerignore          # Docker 忽略文件
+├── .env.example           # 环境变量模板
+├── .env                   # 环境变量(不提交)
+├── .gitignore             # Git 忽略文件
+├── package.json           # Node.js 依赖
+└── data/                  # 数据存储(不提交)
     ├── users.json
     ├── conversations.json
     └── events.json
 ```
+
+> 模块化拆分原则:
+> - **prompts/** 是产品护城河,需要反复调试 → 每个文件 < 300 行
+> - **routes/** 按职责切分,新增 API 时只动一个文件
+> - **public/** 为后续上 Vue/Vite 做准备(届时改为 `dist/`)
 
 ## 更新部署
 
@@ -113,10 +137,10 @@ prototype/
 
 ### 更新前端
 
-修改 `index.html` 后，重新上传到静态托管：
+修改 `public/index.html` / `public/styles.css` / `public/app.js` 后,重新上传到静态托管:
 
 1. 在 CloudBase 控制台 → 静态托管
-2. 上传覆盖 `index.html`
+2. 上传覆盖 `public/` 下的对应文件
 
 ## 安全说明
 
