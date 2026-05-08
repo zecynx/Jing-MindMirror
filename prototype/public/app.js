@@ -163,7 +163,77 @@ function createInitialState() {
 function showScreen(id) {
   document.querySelectorAll('.screen').forEach(s => s.classList.remove('active'));
   $(id).classList.add('active');
+  document.documentElement.classList.toggle('snapshot-mode', id === 'screen-snapshot');
+  if (id === 'screen-snapshot') {
+    window.scrollTo(0, 0);
+  }
 }
+
+async function exportSnapshotAsImage() {
+  if (typeof html2canvas !== 'function') {
+    alert('截图组件还没加载完，请稍后再试');
+    return;
+  }
+  const target = document.getElementById('snapshotContent');
+  if (!target) return;
+
+  window.scrollTo(0, 0);
+
+  const spinner = document.createElement('div');
+  spinner.className = 'image-preview-spinner';
+  spinner.textContent = '正在生成长图…';
+  document.body.appendChild(spinner);
+
+  try {
+    if (document.fonts && document.fonts.ready) {
+      await document.fonts.ready;
+    }
+    const canvas = await html2canvas(target, {
+      backgroundColor: '#0b0b0d',
+      scale: Math.min(window.devicePixelRatio || 2, 2),
+      useCORS: true,
+      logging: false,
+      windowWidth: target.scrollWidth,
+      windowHeight: target.scrollHeight,
+      onclone: (doc) => {
+        const cloned = doc.getElementById('snapshotContent');
+        const a = cloned && cloned.querySelector('.snapshot-actions');
+        if (a) a.style.display = 'none';
+      },
+    });
+    const dataUrl = canvas.toDataURL('image/png');
+    showImagePreview(dataUrl);
+  } catch (err) {
+    console.error('export image failed', err);
+    alert('生成失败:' + (err && err.message ? err.message : '请重试'));
+  } finally {
+    spinner.remove();
+  }
+}
+
+function showImagePreview(dataUrl) {
+  const overlay = document.createElement('div');
+  overlay.className = 'image-preview-overlay';
+  overlay.innerHTML = `
+    <div class="image-preview-inner">
+      <div class="image-preview-tip">长按图片保存到相册</div>
+      <img class="image-preview-img" alt="决策快照" />
+      <button class="image-preview-close" type="button">关闭</button>
+    </div>
+  `;
+  overlay.querySelector('.image-preview-img').src = dataUrl;
+  const close = () => {
+    overlay.remove();
+    document.documentElement.classList.remove('image-preview-open');
+  };
+  overlay.querySelector('.image-preview-close').addEventListener('click', close);
+  overlay.addEventListener('click', (e) => {
+    if (e.target === overlay) close();
+  });
+  document.documentElement.classList.add('image-preview-open');
+  document.body.appendChild(overlay);
+}
+
 function goHome() {
   // 关闭 overlay
   $('historyOverlay').classList.remove('active');
@@ -763,6 +833,7 @@ function renderV2SnapshotHtml(data, calDateStr, confidence, isHistorical) {
     </div>
 
     <div class="snapshot-actions">
+      <button class="end-btn" onclick="exportSnapshotAsImage()">导出长图</button>
       <button class="end-btn" onclick="showJournal()">看历史</button>
       <button class="end-btn primary" onclick="goHome()">完  成</button>
     </div>
@@ -825,6 +896,7 @@ function renderV3SnapshotHtml(data, calDateStr, confidence, isHistorical) {
     </div>
 
     <div class="snapshot-actions">
+      <button class="end-btn" onclick="exportSnapshotAsImage()">导出长图</button>
       <button class="end-btn" onclick="showJournal()">看历史</button>
       <button class="end-btn primary" onclick="goHome()">完  成</button>
     </div>
@@ -951,7 +1023,7 @@ function viewJournalEntry(id) {
   // 调整 actions:历史快照页的按钮回到 journal
   const actions = $('snapshotContent').querySelector('.snapshot-actions');
   if (actions) {
-    actions.innerHTML = `<button class="end-btn primary" onclick="showJournal()">返回列表</button>`;
+    actions.innerHTML = `<button class="end-btn" onclick="exportSnapshotAsImage()">导出长图</button><button class="end-btn primary" onclick="showJournal()">返回列表</button>`;
   }
 
   setTimeout(() => { state.snapshotFromJournal = false; }, 100);

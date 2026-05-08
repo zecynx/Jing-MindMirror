@@ -883,6 +883,83 @@
     border-color: var(--accent);
   }
 
+  /* ==================== 快照页:文档级滚动 ====================
+     让 iOS Safari 的"整页"长截图能识别整页内容。
+     仅在 #screen-snapshot 显示时启用文档滚动,其他屏幕不受影响。 */
+  html.snapshot-mode,
+  html.snapshot-mode body {
+    height: auto;
+    overflow: visible;
+  }
+  html.snapshot-mode #screen-snapshot {
+    position: static;
+    overflow: visible;
+  }
+  html.snapshot-mode #screen-snapshot .snapshot-area {
+    flex: none;
+    overflow: visible;
+  }
+  html.image-preview-open,
+  html.image-preview-open body {
+    overflow: hidden !important;
+  }
+
+  /* ==================== 长图预览 modal ==================== */
+  .image-preview-overlay {
+    position: fixed;
+    inset: 0;
+    background: rgba(0, 0, 0, 0.88);
+    z-index: 1000;
+    display: flex;
+    align-items: flex-start;
+    justify-content: center;
+    padding: 24px 16px 40px;
+    overflow-y: auto;
+    -webkit-overflow-scrolling: touch;
+  }
+  .image-preview-inner {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 18px;
+    max-width: 100%;
+  }
+  .image-preview-tip {
+    font-family: var(--sans);
+    font-size: 12px;
+    letter-spacing: 3px;
+    color: var(--accent-soft);
+  }
+  .image-preview-img {
+    max-width: 100%;
+    height: auto;
+    display: block;
+    border: 1px solid var(--line);
+  }
+  .image-preview-close {
+    padding: 10px 28px;
+    background: transparent;
+    border: 1px solid var(--line);
+    color: var(--text-soft);
+    font-family: var(--sans);
+    font-size: 12px;
+    letter-spacing: 3px;
+    cursor: pointer;
+  }
+  .image-preview-spinner {
+    position: fixed;
+    inset: 0;
+    background: rgba(11, 11, 13, 0.85);
+    z-index: 999;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    color: var(--text-soft);
+    font-family: var(--sans);
+    font-size: 13px;
+    letter-spacing: 3px;
+  }
+
   /* ==================== 历史决策列表 ==================== */
   .journal-area {
     flex: 1;
