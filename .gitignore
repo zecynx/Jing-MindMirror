@@ -28,6 +28,7 @@ desktop.ini
 # === 构建产物 ===
 dist/
 build/
+deploy-packages/
 
 # === CodeBuddy & CloudBase 工具配置 ===
 .codebuddy/

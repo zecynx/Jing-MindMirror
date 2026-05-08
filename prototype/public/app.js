@@ -42,6 +42,13 @@ function nl2br(s) {
   return escapeHtml(s).replace(/\n/g, '<br>');
 }
 
+function renderMarkdown(text) {
+  let html = escapeHtml(text);
+  html = html.replace(/\*\*(.+?)\*\*/g, '<strong>$1</strong>');
+  html = html.replace(/\n/g, '<br>');
+  return html;
+}
+
 // 解析 AI 回复:拆分主追问和脚手架引导
 function parseScaffold(content) {
   const match = content.match(/\[SCAFFOLD\]([\s\S]*?)\[\/SCAFFOLD\]/i);
@@ -276,8 +283,8 @@ async function typeQuestion(text) {
 
   for (let i = 0; i < text.length; i++) {
     if (state.interrupted) {
-      $('questionText').textContent = text;
-      $('questionText').appendChild(caret);
+      // 被中断时:清空内容,不渲染markdown,直接退出
+      $('questionText').textContent = '';
       break;
     }
     const ch = text[i];
@@ -289,8 +296,14 @@ async function typeQuestion(text) {
     else if (ch === '——' || ch === '—') delay = 140;
     await sleep(delay);
   }
-  await sleep(250);
-  if (caret.parentNode) caret.remove();
+  if (!state.interrupted) {
+    await sleep(250);
+    if (caret.parentNode) caret.remove();
+    $('questionText').innerHTML = renderMarkdown(text);
+  } else {
+    // 被中断:只清理caret,内容已在循环中清空
+    if (caret.parentNode) caret.remove();
+  }
   state.typing = false;
 }
 
@@ -411,6 +424,15 @@ $('scaffoldToggle').addEventListener('click', () => {
 async function submitReply() {
   const text = $('replyInput').value.trim();
   if (!text || state.isAiTyping || state.conversationComplete) return;
+
+  // 中断上一轮打字机(如果有)
+  if (state.typing) {
+    state.interrupted = true;
+    // 等待上一轮打字机彻底结束,避免DOM竞争
+    while (state.typing) {
+      await sleep(50);
+    }
+  }
 
   state.isAiTyping = true;
   state.messages.push({ role: 'user', content: text });
@@ -606,11 +628,16 @@ function renderSnapshot(data) {
       title: data.title,
       type: data.type,
       hero_quote: data.hero_quote,
-      stances: data.stances,
-      premortem_change: data.premortem_change,
-      premortem_stay: data.premortem_stay,
-      blindspots: data.blindspots,
-      future_perspective: data.future_perspective,
+      // V3 字段
+      essay: data.essay || '',
+      annotations: data.annotations || [],
+      schema_version: data.schema_version || 'v2',
+      // 旧版兼容字段(仍保留,旧数据能读)
+      stances: data.stances || '',
+      premortem_change: data.premortem_change || '',
+      premortem_stay: data.premortem_stay || '',
+      blindspots: data.blindspots || '',
+      future_perspective: data.future_perspective || '',
       confidence,
       createdAt: now.toISOString(),
       calibrationDate: calDate.toISOString(),
@@ -665,6 +692,13 @@ function animateConfidence(target) {
 }
 
 function renderSnapshotHtml(data, calDateStr, confidence, isHistorical) {
+  const isV3 = data.schema_version === 'v3' || (data.essay && data.annotations);
+  return isV3
+    ? renderV3SnapshotHtml(data, calDateStr, confidence, isHistorical)
+    : renderV2SnapshotHtml(data, calDateStr, confidence, isHistorical);
+}
+
+function renderV2SnapshotHtml(data, calDateStr, confidence, isHistorical) {
   const dotsHtml = Array.from({ length: 10 }, (_, i) =>
     `<div class="confidence-dot${isHistorical && i < confidence ? ' filled' : ''}"></div>`
   ).join('');
@@ -743,6 +777,93 @@ function renderSnapshotHtml(data, calDateStr, confidence, isHistorical) {
 }
 
 // ============================================================
+//  V3 Snapshot: annotated essay
+// ============================================================
+
+function renderV3SnapshotHtml(data, calDateStr, confidence, isHistorical) {
+  const dotsHtml = Array.from({ length: 10 }, (_, i) =>
+    `<div class="confidence-dot${isHistorical && i < confidence ? ' filled' : ''}"></div>`
+  ).join('');
+
+  const heroQuoteSection = data.hero_quote ? `
+    <div class="snapshot-section">
+      <div class="snapshot-eyebrow">你 说 出 来 最 重 的 那 句</div>
+      <div class="snapshot-quote-block">
+        <div class="snapshot-quote-mark">"</div>
+        <div class="snapshot-quote">${escapeHtml(data.hero_quote)}</div>
+        <div class="snapshot-quote-end">"</div>
+      </div>
+    </div>
+  ` : '';
+
+  const essayHtml = renderAnnotatedEssay(data.essay, data.annotations);
+
+  return `
+    <div class="snapshot-section">
+      <div class="snapshot-eyebrow-row">
+        <div class="snapshot-eyebrow">你 今 天 纠 结 的 是</div>
+        ${data.type ? `<div class="snapshot-tag">${escapeHtml(data.type)}</div>` : ''}
+      </div>
+      <div class="snapshot-body title">${escapeHtml(data.title || '我的决策')}</div>
+    </div>
+
+    ${heroQuoteSection}
+
+    <div class="snapshot-section">
+      <div class="snapshot-eyebrow">今 天 的 对 话</div>
+      <div class="snapshot-essay">${essayHtml}</div>
+    </div>
+
+    <div class="snapshot-section">
+      <div class="snapshot-eyebrow">你 今 天 的 信 心</div>
+      <div class="confidence-block">
+        <div class="confidence-dots">${dotsHtml}</div>
+        <div class="confidence-row">
+          <div class="confidence-num"><span class="num-target">${isHistorical ? confidence : 0}</span><small> / 10</small></div>
+          <div class="confidence-meaning">${confidenceMeaning(confidence)}</div>
+        </div>
+      </div>
+    </div>
+
+    <div class="calibration-block">
+      <div class="calibration-eyebrow">校 准 提 醒</div>
+      <div class="calibration-body">把这些放在心里。<br>3 个月后再回来，<br>看看那时候你怎么想。</div>
+      <div class="calibration-date">${calDateStr}</div>
+    </div>
+
+    <div class="snapshot-actions">
+      <button class="end-btn" onclick="showJournal()">看历史</button>
+      <button class="end-btn primary" onclick="goHome()">完  成</button>
+    </div>
+  `;
+}
+
+function renderAnnotatedEssay(essay, annotations) {
+  if (!essay) return '';
+  if (!annotations || annotations.length === 0) {
+    return nl2br(essay);
+  }
+
+  const sorted = [...annotations].sort((a, b) => (b.anchor?.length || 0) - (a.anchor?.length || 0));
+  let html = escapeHtml(essay);
+
+  for (const anno of sorted) {
+    if (!anno.anchor) continue;
+    const anchorHtml = escapeHtml(anno.anchor);
+    const idx = html.indexOf(anchorHtml);
+    if (idx >= 0) {
+      const before = html.substring(0, idx);
+      const after = html.substring(idx + anchorHtml.length);
+      const label = { reflection: '反映', observation: '观察', gentle_prompt: '轻引导' }[anno.type] || anno.type;
+      const span = `<span class="annotated">${anchorHtml}<span class="anno-tooltip"><span class="anno-tooltip-type">${escapeHtml(label)}</span><span class="anno-tooltip-comment">${escapeHtml(anno.comment)}</span></span></span>`;
+      html = before + span + after;
+    }
+  }
+
+  return html.replace(/\n/g, '<br>');
+}
+
+// ============================================================
 //  日志
 // ============================================================
 function loadJournal() {
@@ -769,11 +890,14 @@ function addJournalEntry(entry) {
       status: 'completed',
       confidence: entry.confidence,
       hero_quote: entry.hero_quote,
-      stances: entry.stances,
-      premortem_change: entry.premortem_change,
-      premortem_stay: entry.premortem_stay,
-      blindspots: entry.blindspots,
-      future_perspective: entry.future_perspective,
+      essay: entry.essay || '',
+      annotations: entry.annotations || [],
+      schema_version: entry.schema_version || 'v2',
+      stances: entry.stances || '',
+      premortem_change: entry.premortem_change || '',
+      premortem_stay: entry.premortem_stay || '',
+      blindspots: entry.blindspots || '',
+      future_perspective: entry.future_perspective || '',
       calibrationDate: entry.calibrationDate,
       messages: entry.messages,
       totalTurns: entry.messages ? Math.floor(entry.messages.length / 2) : 0,
