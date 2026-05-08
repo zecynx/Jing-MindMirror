@@ -1,22 +1,33 @@
 /**
- * /api/chat   — LLM 对话代理(含多层fallback + 质量守门 + 重试)
+ * /api/chat   — LLM 对话代理(V5: 双请求拆分 + 缓存优化)
  * /api/snapshot — 决策快照生成
+ *
+ * V5 架构:
+ *   - Response 请求：纯文本生成追问（主路径，无 JSON 负担）
+ *   - Understanding 请求：独立 JSON 分析对话（辅助路径，失败可接受）
+ *   - 两个请求共享 messages 前缀 → DeepSeek 自动前缀缓存命中
  */
 const express = require('express');
 const db = require('../db');
 const requireUserId = require('../middleware/require-user');
 const { LLM_BASE_URL, LLM_API_KEY, LLM_MODEL } = require('../llm-config');
-const { buildDeepSystemPrompt } = require('../prompts/deep-prompt');
 const { responseQualityCheck } = require('../prompts/quality-gate');
+const {
+  buildResponseMessages,
+  buildUnderstandingMessages,
+  buildRetryMessages,
+  parseUnderstandingOutput,
+  isValidUnderstanding,
+} = require('../prompts/v5-prompts');
 
 const router = express.Router();
 
 // ============================================================
-//  LLM 调用辅助函数
+//  LLM 调用（返回 content + usage 用于缓存监控）
 // ============================================================
 
 async function callLLMAPI(apiMessages, options = {}) {
-  const { maxTokens = 1500, temperature = 0.7, useJSON = true } = options;
+  const { maxTokens = 1500, temperature = 0.7, useJSON = false } = options;
   const body = {
     model: LLM_MODEL,
     messages: apiMessages,
@@ -45,36 +56,16 @@ async function callLLMAPI(apiMessages, options = {}) {
   }
 
   const data = await response.json();
-  return data.choices[0].message.content.trim();
+  return {
+    content: data.choices[0].message.content.trim(),
+    usage: data.usage || {},
+  };
 }
 
-// 多层 JSON 解析 fallback
-function parseJSONWithFallback(rawContent) {
-  if (!rawContent || rawContent.length === 0) return null;
+// ============================================================
+//  通用 fallback 回复
+// ============================================================
 
-  // 尝试 1: 直接 JSON.parse
-  try {
-    return JSON.parse(rawContent);
-  } catch (e) {
-    // 尝试 2: 正则提取 JSON 块
-    const jsonMatch = rawContent.match(/\{[\s\S]*\}/);
-    if (jsonMatch) {
-      try {
-        return JSON.parse(jsonMatch[0]);
-      } catch (e2) {
-        // 继续 fallback
-      }
-    }
-  }
-  return null;
-}
-
-// 验证解析结果
-function isValidParsed(parsed) {
-  return parsed && parsed.response && typeof parsed.response.content === 'string' && parsed.response.content.length > 0;
-}
-
-// 通用 fallback 回复
 function buildGenericResponse() {
   return {
     understanding: { surface: '（对话继续中）', tension: '', key_moments: [], unsaid: '' },
@@ -82,41 +73,22 @@ function buildGenericResponse() {
   };
 }
 
-// 构建简化版 system prompt（用于 fallback）
-const SIMPLE_SYSTEM_PROMPT = `你是镜——一个严肃的思考伙伴。你不是分析师、导师或治疗师。你是那种"对方说话时你真的在听"的人。
+// ============================================================
+//  缓存命中日志
+// ============================================================
 
-你的工作不是"问出答案"，是"陪 ta 把没想清楚的都说出来"。
-
-基于对话内容，生成一个自然的追问。追问要针对用户的具体内容，不要按任何固定套路。
-
-输出必须是 JSON 格式：
-{
-  "understanding": {
-    "surface": "用户表面在说什么",
-    "tension": "核心张力",
-    "key_moments": ["关键时刻"],
-    "unsaid": "还没说出的"
-  },
-  "response": {
-    "content": "追问内容",
-    "is_winding_down": false,
-    "wind_down_hint": null
+function logCacheHit(label, usage) {
+  const hit = usage.prompt_cache_hit_tokens || 0;
+  const miss = usage.prompt_cache_miss_tokens || 0;
+  const total = usage.prompt_tokens || 0;
+  if (total > 0) {
+    const rate = ((hit / total) * 100).toFixed(1);
+    console.log(`[Cache] ${label}: hit=${hit}, miss=${miss}, total=${total}, rate=${rate}%`);
   }
 }
 
-铁律：不给建议、不下结论、不空洞肯定、必须有引导、不与之前重复。
-回复长度 3-5 句话。`;
-
-// 纯文本模式 system prompt（用于最终 fallback）
-const TEXT_SYSTEM_PROMPT = `你是镜——一个严肃的思考伙伴。基于对话内容，生成一个自然的追问。
-
-回复格式（严格遵守）：
-CONTENT: 追问内容（3-5句话，必须有引导）
-
-铁律：不给建议、不下结论。`;
-
 // ============================================================
-//  /api/chat
+//  /api/chat — V5 双请求并行
 // ============================================================
 
 router.post('/chat', requireUserId, async (req, res) => {
@@ -126,11 +98,19 @@ router.post('/chat', requireUserId, async (req, res) => {
     return res.status(500).json({ error: '未配置 LLM_API_KEY,请在 .env 文件中设置' });
   }
 
-  // 提取最近的 assistant 消息（用于重复检测）
+  // 提取最近的 assistant 消息（用于重复检测和质量守门）
   const recentAssistantMessages = messages
     .filter(m => m.role === 'assistant')
     .slice(-2)
-    .map(m => m.content);
+    .map(m => {
+      // 兼容旧数据：尝试从 JSON 中提取 content
+      try {
+        const parsed = JSON.parse(m.content);
+        return parsed.response?.content || m.content;
+      } catch (e) {
+        return m.content;
+      }
+    });
 
   const userLastMessage = messages.filter(m => m.role === 'user').pop()?.content || '';
 
@@ -141,95 +121,63 @@ router.post('/chat', requireUserId, async (req, res) => {
     data: { hasUnderstanding: !!understanding, role: messages[messages.length - 1]?.role }
   });
 
-  let rawContent = '';
-  let parsed = null;
-  let attempt = 0;
-
   try {
-    // ── 尝试 1: 完整调用（带 understanding + JSON mode）──
-    attempt = 1;
-    const systemPrompt = buildDeepSystemPrompt(understanding || null, messages, style || 'gentle');
-    const apiMessages = [
-      { role: 'system', content: systemPrompt },
-      ...messages.map(m => ({ role: m.role, content: m.content }))
-    ];
+    // ── 并行启动两个请求 ──
+    // Response（主路径）：纯文本生成追问
+    // Understanding（辅助路径）：JSON 分析对话
+
+    const responsePromise = callLLMAPI(
+      buildResponseMessages(messages, understanding, style),
+      { maxTokens: 1200, temperature: 0.7, useJSON: false }
+    );
+
+    const understandingPromise = callLLMAPI(
+      buildUnderstandingMessages(messages),
+      { maxTokens: 800, temperature: 0.3, useJSON: true }
+    );
+
+    // ── 等待 Response（主路径，阻塞）──
+    let content = '';
+    let rawContent = '';
 
     try {
-      rawContent = await callLLMAPI(apiMessages, { maxTokens: 1500, useJSON: true });
-      parsed = parseJSONWithFallback(rawContent);
-      console.log(`[LLM] 尝试${attempt}: rawContent长度=${rawContent.length}, 解析=${isValidParsed(parsed) ? '成功' : '失败'}`);
+      const responseResult = await responsePromise;
+      content = responseResult.content;
+      rawContent = content;
+      logCacheHit('Response', responseResult.usage);
+      console.log(`[LLM] Response: 成功, 长度=${content.length}`);
     } catch (e1) {
-      console.log(`[LLM] 尝试${attempt} API错误:`, e1.message);
+      console.log(`[LLM] Response 请求失败:`, e1.message);
+      // 使用通用 fallback
+      const fallback = buildGenericResponse();
+      content = fallback.response.content;
+      rawContent = JSON.stringify(fallback);
     }
 
-    // ── 尝试 2: 简化调用（不带 understanding，减少 token）──
-    if (!isValidParsed(parsed)) {
-      attempt = 2;
-      console.log(`[LLM] 尝试${attempt}: 简化prompt，只发最近4轮`);
-      const simpleMessages = [
-        { role: 'system', content: SIMPLE_SYSTEM_PROMPT },
-        ...messages.slice(-4).map(m => ({ role: m.role, content: m.content }))
-      ];
+    // ── 等待 Understanding（辅助路径）──
+    let newUnderstanding = understanding;
+    let isWindingDown = false;
+    let windDownHint = null;
 
-      try {
-        rawContent = await callLLMAPI(simpleMessages, { maxTokens: 1000, useJSON: true });
-        parsed = parseJSONWithFallback(rawContent);
-        console.log(`[LLM] 尝试${attempt}: rawContent长度=${rawContent.length}, 解析=${isValidParsed(parsed) ? '成功' : '失败'}`);
-      } catch (e2) {
-        console.log(`[LLM] 尝试${attempt} API错误:`, e2.message);
+    try {
+      const understandingResult = await understandingPromise;
+      logCacheHit('Understanding', understandingResult.usage);
+
+      const parsed = parseUnderstandingOutput(understandingResult.content);
+      console.log(`[LLM] Understanding: 解析=${isValidUnderstanding(parsed) ? '成功' : '失败'}`);
+
+      if (isValidUnderstanding(parsed)) {
+        newUnderstanding = parsed.understanding;
+        isWindingDown = parsed.is_winding_down || false;
+        windDownHint = parsed.wind_down_hint || null;
       }
+    } catch (e2) {
+      console.log(`[LLM] Understanding 请求失败:`, e2.message);
+      // 保留上一轮的 understanding，默认不收束
     }
-
-    // ── 尝试 3: 纯文本模式（不用 JSON mode）──
-    if (!isValidParsed(parsed)) {
-      attempt = 3;
-      console.log(`[LLM] 尝试${attempt}: 纯文本模式`);
-      const textMessages = [
-        { role: 'system', content: TEXT_SYSTEM_PROMPT },
-        ...messages.slice(-4).map(m => ({ role: m.role, content: m.content }))
-      ];
-
-      try {
-        rawContent = await callLLMAPI(textMessages, { maxTokens: 800, useJSON: false, temperature: 0.5 });
-        console.log(`[LLM] 尝试${attempt}: rawContent长度=${rawContent.length}, 内容前200:`, rawContent.slice(0, 200));
-
-        // 从文本中提取 content
-        const contentMatch = rawContent.match(/CONTENT:\s*([\s\S]*?)(?:\n{2,}|$)/);
-        const content = contentMatch ? contentMatch[1].trim() : rawContent.trim();
-
-        if (content.length > 0) {
-          parsed = {
-            understanding: {
-              surface: '（对话继续中）',
-              tension: '',
-              key_moments: [],
-              unsaid: ''
-            },
-            response: {
-              content: content,
-              is_winding_down: false,
-              wind_down_hint: null
-            }
-          };
-          console.log(`[LLM] 尝试${attempt}: 成功提取content`);
-        }
-      } catch (e3) {
-        console.log(`[LLM] 尝试${attempt} API错误:`, e3.message);
-      }
-    }
-
-    // ── 最终 fallback ──
-    if (!isValidParsed(parsed)) {
-      attempt = 'fallback';
-      console.log(`[LLM] 所有尝试失败，使用通用fallback`);
-      parsed = buildGenericResponse();
-      rawContent = JSON.stringify(parsed);
-    }
-
-    const assistantContent = parsed.response.content.trim();
 
     // ── 质量守门检查 ──
-    const qualityResult = responseQualityCheck(assistantContent, userLastMessage, recentAssistantMessages);
+    const qualityResult = responseQualityCheck(content, userLastMessage, recentAssistantMessages);
 
     db.recordEvent({
       userId: req.userId,
@@ -239,7 +187,6 @@ router.post('/chat', requireUserId, async (req, res) => {
         passed: qualityResult.passed,
         score: qualityResult.score,
         reasons: qualityResult.reasons,
-        retryAttempted: false,
       }
     });
 
@@ -247,44 +194,34 @@ router.post('/chat', requireUserId, async (req, res) => {
     if (qualityResult.mustRetry) {
       console.log(`[Quality Gate] 触发重试 (score=${qualityResult.score}): ${qualityResult.reasons.join('; ')}`);
 
-      const retryMessages = [
-        { role: 'system', content: SIMPLE_SYSTEM_PROMPT },
-        ...messages.slice(-2).map(m => ({ role: m.role, content: m.content })),
-        { role: 'assistant', content: rawContent },
-        { role: 'user', content: `[系统质量约束提醒——请严格遵守]\n你的上一个回复被标记为质量不达标。具体原因:\n${qualityResult.reasons.map((r, i) => `${i + 1}. ${r}`).join('\n')}\n\n请重新生成回复,严格遵守以下规则:\n- 永远不给建议、不给结论\n- 必须包含至少一个开放式追问\n- 追问必须引用用户的具体用词(用引号引用原话)\n- 禁止空洞肯定("你说得对""我完全理解")\n- 禁止与之前的问题重复\n- 回应长度3-5句话\n- 输出必须是合法JSON格式` }
-      ];
-
       try {
-        const retryRaw = await callLLMAPI(retryMessages, { maxTokens: 1000, useJSON: true, temperature: 0.4 });
-        const retryParsed = parseJSONWithFallback(retryRaw);
+        const retryResult = await callLLMAPI(
+          buildRetryMessages(messages, style, content, qualityResult),
+          { maxTokens: 1000, temperature: 0.4, useJSON: false }
+        );
 
-        if (isValidParsed(retryParsed)) {
-          const retryQuality = responseQualityCheck(
-            retryParsed.response.content.trim(),
-            userLastMessage,
-            recentAssistantMessages
-          );
+        const retryContent = retryResult.content.trim();
+        const retryQuality = responseQualityCheck(retryContent, userLastMessage, recentAssistantMessages);
 
-          db.recordEvent({
-            userId: req.userId,
-            type: 'retry_triggered',
-            conversationId,
-            data: {
-              originalScore: qualityResult.score,
-              retryScore: retryQuality.score,
-              retryPassed: retryQuality.passed,
-              originalReasons: qualityResult.reasons,
-              retryReasons: retryQuality.reasons,
-            }
-          });
-
-          if (retryQuality.score > qualityResult.score) {
-            parsed = retryParsed;
-            rawContent = retryRaw;
-            console.log(`[Quality Gate] 重试改善 (score: ${qualityResult.score} → ${retryQuality.score})`);
-          } else {
-            console.log(`[Quality Gate] 重试未改善,保留原始回复 (score: ${qualityResult.score} vs ${retryQuality.score})`);
+        db.recordEvent({
+          userId: req.userId,
+          type: 'retry_triggered',
+          conversationId,
+          data: {
+            originalScore: qualityResult.score,
+            retryScore: retryQuality.score,
+            retryPassed: retryQuality.passed,
+            originalReasons: qualityResult.reasons,
+            retryReasons: retryQuality.reasons,
           }
+        });
+
+        if (retryQuality.score > qualityResult.score) {
+          content = retryContent;
+          rawContent = retryContent;
+          console.log(`[Quality Gate] 重试改善 (score: ${qualityResult.score} → ${retryQuality.score})`);
+        } else {
+          console.log(`[Quality Gate] 重试未改善,保留原始回复 (score: ${qualityResult.score} vs ${retryQuality.score})`);
         }
       } catch (retryErr) {
         console.error('[Quality Gate] 重试请求失败:', retryErr.message);
@@ -293,11 +230,11 @@ router.post('/chat', requireUserId, async (req, res) => {
 
     // ── 返回结果 ──
     res.json({
-      content: parsed.response.content.trim(),
+      content: content.trim(),
       rawContent: rawContent,
-      understanding: parsed.understanding,
-      is_winding_down: parsed.response.is_winding_down || false,
-      wind_down_hint: parsed.response.wind_down_hint || null,
+      understanding: newUnderstanding,
+      is_winding_down: isWindingDown,
+      wind_down_hint: windDownHint,
     });
 
   } catch (err) {
