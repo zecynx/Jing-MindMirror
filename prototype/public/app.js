@@ -201,8 +201,11 @@ async function exportSnapshotAsImage() {
         if (a) a.style.display = 'none';
       },
     });
-    const dataUrl = canvas.toDataURL('image/png');
-    showImagePreview(dataUrl);
+    const blob = await new Promise((resolve, reject) => {
+      canvas.toBlob((b) => b ? resolve(b) : reject(new Error('toBlob 返回空')), 'image/png');
+    });
+    const blobUrl = URL.createObjectURL(blob);
+    showImagePreview(blobUrl);
   } catch (err) {
     console.error('export image failed', err);
     alert('生成失败:' + (err && err.message ? err.message : '请重试'));
@@ -211,20 +214,25 @@ async function exportSnapshotAsImage() {
   }
 }
 
-function showImagePreview(dataUrl) {
+function showImagePreview(imgUrl) {
   const overlay = document.createElement('div');
   overlay.className = 'image-preview-overlay';
   overlay.innerHTML = `
     <div class="image-preview-inner">
-      <div class="image-preview-tip">长按图片保存到相册</div>
+      <div class="image-preview-tip">长按图片保存到相册<br>(无效的话点下面"在新页面打开")</div>
       <img class="image-preview-img" alt="决策快照" />
+      <a class="image-preview-link" target="_blank" rel="noopener">在新页面打开</a>
       <button class="image-preview-close" type="button">关闭</button>
     </div>
   `;
-  overlay.querySelector('.image-preview-img').src = dataUrl;
+  overlay.querySelector('.image-preview-img').src = imgUrl;
+  overlay.querySelector('.image-preview-link').href = imgUrl;
   const close = () => {
     overlay.remove();
     document.documentElement.classList.remove('image-preview-open');
+    setTimeout(() => {
+      try { URL.revokeObjectURL(imgUrl); } catch (e) {}
+    }, 60000);
   };
   overlay.querySelector('.image-preview-close').addEventListener('click', close);
   overlay.addEventListener('click', (e) => {
