@@ -56,6 +56,7 @@ router.post('/chat', requireUserId, async (req, res) => {
         top_p: 0.85,
         frequency_penalty: 0.3,
         presence_penalty: 0.1,
+        response_format: { type: 'json_object' },
       })
     });
 
