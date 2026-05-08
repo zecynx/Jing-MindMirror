@@ -332,8 +332,54 @@ function showError(msg) {
   el.classList.remove('thinking');
   el.classList.add('error');
   el.style.opacity = '1';
-  el.textContent = '⚠ ' + msg + '\n\n点左上角 ← 回到首页重试';
+  el.innerHTML = '⚠ ' + escapeHtml(msg) + '<br><br><button class="retry-btn" onclick="retryLastMessage()">重试</button> 或点左上角 ← 回到首页';
   state.isAiTyping = false;
+}
+
+async function retryLastMessage() {
+  const el = $('questionText');
+  el.classList.remove('error');
+  state.isAiTyping = true;
+  await showThinking();
+
+  let result;
+  try {
+    result = await callLLM();
+  } catch (err) {
+    showError(err.message || '请求失败');
+    return;
+  }
+
+  const { main, scaffold } = parseScaffold(result.content);
+
+  // 如果之前出错时已经 push 了 assistant 消息，先移除（避免重复）
+  const lastMsg = state.messages[state.messages.length - 1];
+  if (lastMsg && lastMsg.role === 'assistant') {
+    state.messages.pop();
+    state.displayHistory.pop();
+  }
+
+  state.messages.push({ role: 'assistant', content: result.rawContent || result.content });
+  state.displayHistory.push({ role: 'ai', text: main });
+  state.roundCount++;
+
+  if (result.understanding) {
+    state.understanding = result.understanding;
+  }
+  state.isWindingDown = result.is_winding_down || false;
+
+  await hideThinking();
+  await typeQuestion(main);
+
+  if (state.isWindingDown) {
+    state.isAiTyping = false;
+    showWindDownOptions(result.wind_down_hint);
+    return;
+  }
+
+  if (scaffold) scheduleScaffold(scaffold);
+  state.isAiTyping = false;
+  enableInput();
 }
 
 // ============================================================
