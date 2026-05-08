@@ -12,15 +12,21 @@ const { responseQualityCheck } = require('../prompts/quality-gate');
 const router = express.Router();
 
 router.post('/chat', requireUserId, async (req, res) => {
-  const { messages, phase, turnCount, conversationId, style } = req.body;
+  const { messages, understanding, conversationId, style } = req.body;
 
   if (!LLM_API_KEY) {
     return res.status(500).json({ error: '未配置 LLM_API_KEY,请在 .env 文件中设置' });
   }
 
-  // V4: 从 conversationId 获取当前 understanding（如有），否则传 null
-  const understanding = null; // TODO: Task 3 接入 understanding-store
-  const systemPrompt = buildDeepSystemPrompt(understanding, messages, style || 'gentle');
+  // 提取最近的 assistant 消息（用于重复检测）
+  const recentAssistantMessages = messages
+    .filter(m => m.role === 'assistant')
+    .slice(-2)
+    .map(m => m.content);
+
+  const userLastMessage = messages.filter(m => m.role === 'user').pop()?.content || '';
+
+  const systemPrompt = buildDeepSystemPrompt(understanding || null, messages, style || 'gentle');
 
   const apiMessages = [
     { role: 'system', content: systemPrompt },
@@ -31,10 +37,8 @@ router.post('/chat', requireUserId, async (req, res) => {
     userId: req.userId,
     type: 'message_send',
     conversationId,
-    data: { phase, turnCount, role: messages[messages.length - 1]?.role }
+    data: { hasUnderstanding: !!understanding, role: messages[messages.length - 1]?.role }
   });
-
-  const userLastMessage = messages.filter(m => m.role === 'user').pop()?.content || '';
 
   try {
     // ── 第一轮调用 ──
@@ -47,8 +51,8 @@ router.post('/chat', requireUserId, async (req, res) => {
       body: JSON.stringify({
         model: LLM_MODEL,
         messages: apiMessages,
-        temperature: 0.7,  // V4: 取消阶段温度，统一用 0.7
-        max_tokens: 800,
+        temperature: 0.7,
+        max_tokens: 1000,
         top_p: 0.85,
         frequency_penalty: 0.3,
         presence_penalty: 0.1,
@@ -62,10 +66,37 @@ router.post('/chat', requireUserId, async (req, res) => {
     }
 
     const data = await response.json();
-    let content = data.choices[0].message.content.trim();
+    let rawContent = data.choices[0].message.content.trim();
+
+    // ── 解析 JSON ──
+    let parsed;
+    try {
+      parsed = JSON.parse(rawContent);
+    } catch (e) {
+      const jsonMatch = rawContent.match(/\{[\s\S]*\}/);
+      if (jsonMatch) {
+        try {
+          parsed = JSON.parse(jsonMatch[0]);
+        } catch (e2) {
+          console.error('JSON 解析失败:', e2.message, rawContent.slice(0, 200));
+          return res.status(500).json({ error: 'LLM 返回格式错误' });
+        }
+      } else {
+        console.error('无法提取 JSON:', rawContent.slice(0, 200));
+        return res.status(500).json({ error: 'LLM 未返回 JSON' });
+      }
+    }
+
+    // 验证结构
+    if (!parsed.understanding || !parsed.response || !parsed.response.content) {
+      console.error('JSON 结构不完整:', JSON.stringify(parsed).slice(0, 200));
+      return res.status(500).json({ error: 'LLM 返回 JSON 结构不完整' });
+    }
+
+    const assistantContent = parsed.response.content.trim();
 
     // ── 质量守门检查 ──
-    const qualityResult = responseQualityCheck(content, userLastMessage);
+    const qualityResult = responseQualityCheck(assistantContent, userLastMessage, recentAssistantMessages);
 
     db.recordEvent({
       userId: req.userId,
@@ -79,14 +110,14 @@ router.post('/chat', requireUserId, async (req, res) => {
       }
     });
 
-    // ── 质量守门:仅在违反铁律或纯模板+无引导时触发约束重试 ──
+    // ── 质量守门:仅在违反铁律或纯重复+无引导时触发约束重试 ──
     if (qualityResult.mustRetry) {
       console.log(`[Quality Gate] 触发重试 (score=${qualityResult.score}): ${qualityResult.reasons.join('; ')}`);
 
       const retryMessages = [
         ...apiMessages,
-        { role: 'assistant', content },
-        { role: 'user', content: `[系统质量约束提醒——请严格遵守]\n你的上一个回复被标记为质量不达标。具体原因:\n${qualityResult.reasons.map((r, i) => `${i + 1}. ${r}`).join('\n')}\n\n请重新生成回复,严格遵守以下规则:\n- 永远不给建议、不给结论\n- 必须包含至少一个开放式追问\n- 追问必须引用用户的具体用词(用引号引用原话)\n- 禁止以"你用了""你说""你提到"等元评论开头,直接追问内容本身\n- 禁止使用"你有没有想过""你是否考虑过""你觉得呢"等模板句式\n- 禁止空洞肯定("你说得对""我理解你的感受")\n- 回应长度2-4句话` }
+        { role: 'assistant', content: rawContent },
+        { role: 'user', content: `[系统质量约束提醒——请严格遵守]\n你的上一个回复被标记为质量不达标。具体原因:\n${qualityResult.reasons.map((r, i) => `${i + 1}. ${r}`).join('\n')}\n\n请重新生成回复,严格遵守以下规则:\n- 永远不给建议、不给结论\n- 必须包含至少一个开放式追问\n- 追问必须引用用户的具体用词(用引号引用原话)\n- 禁止空洞肯定("你说得对""我完全理解")\n- 禁止与之前的问题重复\n- 回应长度3-5句话\n- 输出必须是合法JSON格式` }
       ];
 
       try {
@@ -100,7 +131,7 @@ router.post('/chat', requireUserId, async (req, res) => {
             model: LLM_MODEL,
             messages: retryMessages,
             temperature: 0.4,
-            max_tokens: 800,
+            max_tokens: 1000,
             top_p: 0.8,
             frequency_penalty: 0.4,
             presence_penalty: 0.15,
@@ -109,28 +140,42 @@ router.post('/chat', requireUserId, async (req, res) => {
 
         if (retryResponse.ok) {
           const retryData = await retryResponse.json();
-          const retryContent = retryData.choices[0].message.content.trim();
+          const retryRaw = retryData.choices[0].message.content.trim();
 
-          const retryQuality = responseQualityCheck(retryContent, userLastMessage);
+          let retryParsed;
+          try {
+            retryParsed = JSON.parse(retryRaw);
+          } catch (e) {
+            const jsonMatch = retryRaw.match(/\{[\s\S]*\}/);
+            if (jsonMatch) retryParsed = JSON.parse(jsonMatch[0]);
+          }
 
-          db.recordEvent({
-            userId: req.userId,
-            type: 'retry_triggered',
-            conversationId,
-            data: {
-              originalScore: qualityResult.score,
-              retryScore: retryQuality.score,
-              retryPassed: retryQuality.passed,
-              originalReasons: qualityResult.reasons,
-              retryReasons: retryQuality.reasons,
+          if (retryParsed && retryParsed.response && retryParsed.response.content) {
+            const retryQuality = responseQualityCheck(
+              retryParsed.response.content.trim(),
+              userLastMessage,
+              recentAssistantMessages
+            );
+
+            db.recordEvent({
+              userId: req.userId,
+              type: 'retry_triggered',
+              conversationId,
+              data: {
+                originalScore: qualityResult.score,
+                retryScore: retryQuality.score,
+                retryPassed: retryQuality.passed,
+                originalReasons: qualityResult.reasons,
+                retryReasons: retryQuality.reasons,
+              }
+            });
+
+            if (retryQuality.score > qualityResult.score) {
+              parsed = retryParsed;
+              console.log(`[Quality Gate] 重试改善 (score: ${qualityResult.score} → ${retryQuality.score})`);
+            } else {
+              console.log(`[Quality Gate] 重试未改善,保留原始回复 (score: ${qualityResult.score} vs ${retryQuality.score})`);
             }
-          });
-
-          if (retryQuality.score > qualityResult.score) {
-            content = retryContent;
-            console.log(`[Quality Gate] 重试改善 (score: ${qualityResult.score} → ${retryQuality.score})`);
-          } else {
-            console.log(`[Quality Gate] 重试未改善,保留原始回复 (score: ${qualityResult.score} vs ${retryQuality.score})`);
           }
         } else {
           console.log('[Quality Gate] 重试API调用失败,使用原始回复');
@@ -140,23 +185,12 @@ router.post('/chat', requireUserId, async (req, res) => {
       }
     }
 
-    // ── 解析阶段标记 ──
-    let phaseComplete = false;
-    let conversationComplete = false;
-
-    if (content.includes('[CONVERSATION_COMPLETE]')) {
-      conversationComplete = true;
-      content = content.replace('[CONVERSATION_COMPLETE]', '').trim();
-    }
-    if (content.includes('[PHASE_COMPLETE]')) {
-      phaseComplete = true;
-      content = content.replace('[PHASE_COMPLETE]', '').trim();
-    }
-
+    // ── 返回结果 ──
     res.json({
-      content,
-      phaseComplete,
-      conversationComplete,
+      content: parsed.response.content.trim(),
+      understanding: parsed.understanding,
+      is_winding_down: parsed.response.is_winding_down || false,
+      wind_down_hint: parsed.response.wind_down_hint || null,
     });
 
   } catch (err) {
