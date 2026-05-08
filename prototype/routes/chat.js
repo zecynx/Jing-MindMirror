@@ -314,7 +314,7 @@ ${dialogue}
 
 ## 范例(供格式参考,实际内容必须基于本次对话)
 {
-  "schema_version": "v3",
+  "schema_version": "v4",
   "title": "要不要辞职去做设计师",
   "type": "职业",
   "hero_quote": "我已经画了五年了,真的舍不得",
