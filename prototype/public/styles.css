@@ -970,6 +970,26 @@
     background: rgba(212, 116, 116, 0.15);
     color: var(--warn);
   }
+  .journal-download-all {
+    background: transparent;
+    border: 1px solid var(--line);
+    color: var(--text-faint);
+    font-family: inherit;
+    font-size: 11px;
+    letter-spacing: 1px;
+    padding: 6px 12px;
+    border-radius: 999px;
+    cursor: pointer;
+    transition: color 0.2s ease, border-color 0.2s ease, background 0.2s ease;
+  }
+  .journal-download-all:hover {
+    color: var(--text);
+    border-color: var(--text-soft);
+    background: rgba(255, 255, 255, 0.04);
+  }
+  .journal-download-all:active {
+    transform: translateY(1px);
+  }
 
   /* ==================== 桌面端字号增强 ==================== */
   @media (min-width: 768px) {

@@ -957,6 +957,36 @@ function viewJournalEntry(id) {
   setTimeout(() => { state.snapshotFromJournal = false; }, 100);
 }
 
+function downloadAllJournalEntries() {
+  const journal = loadJournal();
+  if (!journal || journal.length === 0) {
+    alert('还没有可以下载的历史对话');
+    return;
+  }
+
+  const payload = {
+    schema_version: 'mindlens-export-v1',
+    exportedAt: new Date().toISOString(),
+    userId: USER_ID,
+    count: journal.length,
+    entries: journal,
+  };
+
+  const blob = new Blob([JSON.stringify(payload, null, 2)], { type: 'application/json;charset=utf-8' });
+  const url = URL.createObjectURL(blob);
+  const now = new Date();
+  const stamp = `${now.getFullYear()}${String(now.getMonth() + 1).padStart(2, '0')}${String(now.getDate()).padStart(2, '0')}_${String(now.getHours()).padStart(2, '0')}${String(now.getMinutes()).padStart(2, '0')}`;
+  const a = document.createElement('a');
+  a.href = url;
+  a.download = `镜_全部对话_${stamp}.json`;
+  document.body.appendChild(a);
+  a.click();
+  document.body.removeChild(a);
+  setTimeout(() => URL.revokeObjectURL(url), 0);
+
+  trackEvent('journal_download_all', { count: journal.length });
+}
+
 // ============================================================
 //  初始化
 // ============================================================
