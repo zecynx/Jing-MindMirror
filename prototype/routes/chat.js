@@ -18,6 +18,7 @@ router.post('/chat', requireUserId, async (req, res) => {
     return res.status(500).json({ error: '未配置 LLM_API_KEY,请在 .env 文件中设置' });
   }
 
+  // V4 TODO: Task 2 会重写 buildDeepSystemPrompt，移除 phase/turnCount 参数
   const systemPrompt = buildDeepSystemPrompt(phase || 'define', turnCount, messages, style || 'gentle');
 
   const apiMessages = [
@@ -45,7 +46,7 @@ router.post('/chat', requireUserId, async (req, res) => {
       body: JSON.stringify({
         model: LLM_MODEL,
         messages: apiMessages,
-        temperature: 0.7,
+        temperature: 0.7,  // V4: 取消阶段温度，统一用 0.7
         max_tokens: 800,
         top_p: 0.85,
         frequency_penalty: 0.3,
