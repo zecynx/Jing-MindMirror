@@ -1,25 +1,25 @@
 /**
- * 质量守门 V3:从"审讯式 8 条" → "伙伴式 4 条柔规则"
+ * 质量守门 V4:伙伴式 4 条柔规则
  *
  * 4 条规则:
  *   1. 铁律:不给建议、不下结论
- *   2. 真模板句式(只剩 3 条最套路的)
- *   3. 空洞肯定(只剩 2 条最干瘪的)
+ *   2. 不与之前重复(和最近 2 条追问做字符重叠检测)
+ *   3. 空洞肯定(只禁最干瘪的两句)
  *   4. 必须有"引导"(疑问/邀请/留白)
  * 软性:鼓励引用用户原话(扣 5 分)
  *
  * 重试触发(由 chat.js 读 mustRetry):
- *   仅当 破铁律 或 (纯模板 AND 完全无引导) 时为 true
+ *   仅当 破铁律 或 (高度重复 AND 完全无引导) 时为 true
  *   ——score 仍计算供观察,但不再驱动重试
  *
  * 返回:{ passed, reasons, score, mustRetry }
  */
 
-function responseQualityCheck(content, userLastMessage) {
+function responseQualityCheck(content, userLastMessage, recentAssistantMessages = []) {
   const reasons = [];
   let score = 100;
   let brokeIron = false;
-  let brokeTemplate = false;
+  let brokeRepeat = false;
   let brokeNoGuide = false;
 
   // ── 规则1(铁律):建议/结论检测 ──
@@ -37,18 +37,19 @@ function responseQualityCheck(content, userLastMessage) {
     }
   }
 
-  // ── 规则2:真模板句式(只剩 3 条最套路的) ──
-  const templatePatterns = [
-    /你有没有想过/g,
-    /你是否考虑过/g,
-    /我们来梳理一下/g,
-  ];
-  for (const pat of templatePatterns) {
-    if (pat.test(content)) {
-      reasons.push('使用了真模板句式("你有没有想过/你是否考虑过/我们来梳理一下"),套路感强');
+  // ── 规则2(新增):不与之前重复 ──
+  if (recentAssistantMessages.length >= 2) {
+    const contentCore = content.replace(/[,。?!、\s]/g, '');
+    const last1 = recentAssistantMessages[recentAssistantMessages.length - 1].replace(/[,。?!、\s]/g, '');
+    const last2 = recentAssistantMessages[recentAssistantMessages.length - 2].replace(/[,。?!、\s]/g, '');
+
+    const overlap1 = [...contentCore].filter(c => last1.includes(c)).length / Math.max(contentCore.length, 1);
+    const overlap2 = [...contentCore].filter(c => last2.includes(c)).length / Math.max(contentCore.length, 1);
+
+    if (overlap1 > 0.6 || overlap2 > 0.6) {
+      reasons.push('本轮追问与最近的问题高度重复，需要换角度');
       score -= 25;
-      brokeTemplate = true;
-      break;
+      brokeRepeat = true;
     }
   }
 
@@ -85,7 +86,7 @@ function responseQualityCheck(content, userLastMessage) {
 
   score = Math.max(0, score);
   const passed = score >= 60;
-  const mustRetry = brokeIron || (brokeTemplate && brokeNoGuide);
+  const mustRetry = brokeIron || (brokeRepeat && brokeNoGuide);
 
   return { passed, reasons, score, mustRetry };
 }
