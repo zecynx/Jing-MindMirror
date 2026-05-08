@@ -18,8 +18,9 @@ router.post('/chat', requireUserId, async (req, res) => {
     return res.status(500).json({ error: '未配置 LLM_API_KEY,请在 .env 文件中设置' });
   }
 
-  // V4 TODO: Task 2 会重写 buildDeepSystemPrompt，移除 phase/turnCount 参数
-  const systemPrompt = buildDeepSystemPrompt(phase || 'define', turnCount, messages, style || 'gentle');
+  // V4: 从 conversationId 获取当前 understanding（如有），否则传 null
+  const understanding = null; // TODO: Task 3 接入 understanding-store
+  const systemPrompt = buildDeepSystemPrompt(understanding, messages, style || 'gentle');
 
   const apiMessages = [
     { role: 'system', content: systemPrompt },
