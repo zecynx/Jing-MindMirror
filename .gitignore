@@ -46,3 +46,13 @@ archive/
 
 # === 无关 demo / 试验目录 ===
 demo-c/
+
+# === 测试数据与测试文件 ===
+__test*
+*.test.html
+*.test.js
+test-data/
+*.log
+
+# === 本地备份(临时,定期手动清理) ===
+.backup/

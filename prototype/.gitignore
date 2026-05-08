@@ -26,3 +26,10 @@ desktop.ini
 *.swp
 *.swo
 *~
+
+# === 测试数据与测试文件 ===
+__test*
+*.test.html
+*.test.js
+test-data/
+*.log
