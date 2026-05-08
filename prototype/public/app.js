@@ -233,7 +233,7 @@ async function startConversation() {
   try {
     const result = await callLLM();
     const { main, scaffold } = parseScaffold(result.content);
-    state.messages.push({ role: 'assistant', content: result.content });
+    state.messages.push({ role: 'assistant', content: result.rawContent || result.content });
     state.displayHistory.push({ role: 'ai', text: main });
     state.roundCount++;
 

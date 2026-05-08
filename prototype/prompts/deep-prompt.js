@@ -25,13 +25,7 @@ function detectStuck(conversationHistory) {
 }
 
 function buildDeepSystemPrompt(understanding, conversationHistory, style) {
-  // 构建对话摘要（辅助理解，不直接用于约束追问）
-  const userMessages = conversationHistory.filter(m => m.role === 'user').map(m => m.content);
-  const dialogueSummary = userMessages.length > 0
-    ? `\n对话记录（按时间）:\n${userMessages.map((m, i) => `${i + 1}. ${m}`).join('\n')}`
-    : '';
-
-  // 当前理解
+  // 当前理解（对话历史通过 messages 单独传递，不在 system prompt 中重复）
   const understandingBlock = understanding
     ? `\n这是你们已经聊过的内容:\n- 用户表面在说的是：${understanding.surface || '（刚开始）'}\n- 核心张力是：${understanding.tension || '（还没浮现）'}\n- 关键时刻：${(understanding.key_moments || []).join('；') || '（还没有）'}\n- 还没说出的：${understanding.unsaid || '（还没发现）'}`
     : '\n这是对话的第一轮。';
@@ -44,7 +38,6 @@ function buildDeepSystemPrompt(understanding, conversationHistory, style) {
 
 你的工作不是"问出答案"，是"陪 ta 把没想清楚的都说出来"。
 ${understandingBlock}
-${dialogueSummary}
 
 【输出格式要求】
 请以 JSON 格式输出，包含 understanding 和 response 两个字段：

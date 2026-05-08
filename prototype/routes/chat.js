@@ -52,7 +52,7 @@ router.post('/chat', requireUserId, async (req, res) => {
         model: LLM_MODEL,
         messages: apiMessages,
         temperature: 0.7,
-        max_tokens: 1000,
+        max_tokens: 1500,
         top_p: 0.85,
         frequency_penalty: 0.3,
         presence_penalty: 0.1,
@@ -187,8 +187,10 @@ router.post('/chat', requireUserId, async (req, res) => {
     }
 
     // ── 返回结果 ──
+    // rawContent: 完整 JSON（用于前端存储到 messages，让 LLM 下一轮能看到自己的 JSON 输出历史）
     res.json({
       content: parsed.response.content.trim(),
+      rawContent: rawContent,
       understanding: parsed.understanding,
       is_winding_down: parsed.response.is_winding_down || false,
       wind_down_hint: parsed.response.wind_down_hint || null,
