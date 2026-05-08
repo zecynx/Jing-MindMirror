@@ -90,6 +90,21 @@ function hideScaffold() {
 }
 
 // ============================================================
+//  Understanding 显示
+// ============================================================
+function showUnderstanding(text) {
+  const el = $('understandingBar');
+  if (!el) return;
+  el.textContent = text ? `镜在听：${text}` : '';
+  el.classList.toggle('show', !!text);
+}
+
+function hideUnderstanding() {
+  const el = $('understandingBar');
+  if (el) el.classList.remove('show');
+}
+
+// ============================================================
 //  埋点
 // ============================================================
 function trackEvent(type, data = {}) {
@@ -120,46 +135,26 @@ async function checkServerHealth() {
 }
 
 // ============================================================
-//  阶段配置
-// ============================================================
-const PHASES = [
-  { id: 'define',    label: '定义',    minTurns: 1, maxTurns: 3 },
-  { id: 'stance',    label: '立场',    minTurns: 3, maxTurns: 6 },
-  { id: 'premortem', label: '复盘',    minTurns: 3, maxTurns: 5 },
-  { id: 'blindspot', label: '盲区',    minTurns: 3, maxTurns: 6 },
-  { id: 'future',    label: '回望',    minTurns: 1, maxTurns: 3 },
-];
-const TOTAL_PHASES = PHASES.length;
-
-// ============================================================
 //  状态
 // ============================================================
 let state = createInitialState();
 
 function createInitialState() {
   return {
-    currentPhase: 'define',
-    phaseTurnCount: 0,
-    totalTurnCount: 0,
+    roundCount: 0,
     messages: [],          // for LLM
     displayHistory: [],    // for 回看 overlay: {role, text}
     isAiTyping: false,
     typing: false,
     interrupted: false,
-    conversationComplete: false,
+    isWindingDown: false,
     conversationId: null,
     phaseStartTime: Date.now(),
     recentUserLengths: [],
     snapshotData: null,
+    understanding: null,
     style: localStorage.getItem('prism_show_hints') === '0' ? 'direct' : 'gentle',
   };
-}
-
-function getPhaseConfig() {
-  return PHASES.find(p => p.id === state.currentPhase) || PHASES[0];
-}
-function getPhaseIndex() {
-  return PHASES.findIndex(p => p.id === state.currentPhase);
 }
 
 // ============================================================
@@ -226,7 +221,6 @@ async function startConversation() {
   $('historyToggle').style.opacity = '';
   $('completionBar').classList.remove('show');
   hideScaffold();
-  updateBadge(true);
 
   showScreen('screen-dialogue');
   trackEvent('conversation_start', { decisionPreview: decision.slice(0, 50) });
@@ -241,8 +235,14 @@ async function startConversation() {
     const { main, scaffold } = parseScaffold(result.content);
     state.messages.push({ role: 'assistant', content: result.content });
     state.displayHistory.push({ role: 'ai', text: main });
-    state.totalTurnCount++;
-    state.phaseTurnCount++;
+    state.roundCount++;
+
+    // 更新 understanding
+    if (result.understanding && result.understanding.tension) {
+      state.understanding = result.understanding;
+      showUnderstanding(result.understanding.tension);
+    }
+
     await typeQuestion(main);
     if (scaffold) scheduleScaffold(scaffold);
     enableInput();
@@ -259,8 +259,7 @@ async function callLLM() {
     method: 'POST',
     body: JSON.stringify({
       messages: state.messages,
-      phase: state.currentPhase,
-      turnCount: state.phaseTurnCount,
+      understanding: state.understanding,
       conversationId: state.conversationId,
       style: state.style,
     }),
@@ -338,52 +337,6 @@ function showError(msg) {
 }
 
 // ============================================================
-//  阶段过渡:光带下落 + 角标 morph
-// ============================================================
-function updateBadge(noAnim = false) {
-  const phase = getPhaseConfig();
-  const idx = getPhaseIndex() + 1;
-  const html = `${phase.label} <span class="num">${idx} / ${TOTAL_PHASES}</span>`;
-  if (noAnim) {
-    $('phaseBadge').innerHTML = html;
-    return;
-  }
-  $('phaseBadge').classList.add('morphing');
-  setTimeout(() => {
-    $('phaseBadge').innerHTML = html;
-    $('phaseBadge').classList.remove('morphing');
-  }, 300);
-}
-
-async function transitionPhase() {
-  // 推进 state.currentPhase
-  const idx = getPhaseIndex();
-  if (idx < PHASES.length - 1) {
-    state.currentPhase = PHASES[idx + 1].id;
-  }
-  state.phaseTurnCount = 0;
-  state.phaseStartTime = Date.now();
-  state.recentUserLengths = [];
-
-  trackEvent('phase_advance', {
-    to: state.currentPhase,
-    phaseIdx: idx + 2,
-  });
-
-  // 1. 光带从顶部下落
-  $('lightBeam').classList.remove('falling');
-  void $('lightBeam').offsetWidth;
-  $('lightBeam').classList.add('falling');
-
-  // 2. 中途 morph 角标
-  await sleep(500);
-  updateBadge();
-
-  // 3. 等光带落完
-  await sleep(700);
-}
-
-// ============================================================
 //  输入处理
 // ============================================================
 function enableInput() {
@@ -423,12 +376,11 @@ $('scaffoldToggle').addEventListener('click', () => {
 
 async function submitReply() {
   const text = $('replyInput').value.trim();
-  if (!text || state.isAiTyping || state.conversationComplete) return;
+  if (!text || state.isAiTyping || state.isWindingDown) return;
 
   // 中断上一轮打字机(如果有)
   if (state.typing) {
     state.interrupted = true;
-    // 等待上一轮打字机彻底结束,避免DOM竞争
     while (state.typing) {
       await sleep(50);
     }
@@ -443,6 +395,7 @@ async function submitReply() {
   $('replyInput').style.height = 'auto';
   disableInput();
   hideScaffold();
+  hideUnderstanding();
 
   await showThinking();
 
@@ -458,64 +411,57 @@ async function submitReply() {
 
   state.messages.push({ role: 'assistant', content: result.content });
   state.displayHistory.push({ role: 'ai', text: main });
-  state.totalTurnCount++;
-  state.phaseTurnCount++;
+  state.roundCount++;
+
+  // 更新 understanding
+  if (result.understanding) {
+    state.understanding = result.understanding;
+  }
+
+  // 更新收束状态
+  state.isWindingDown = result.is_winding_down || false;
 
   await hideThinking();
-
-  // 阶段推进判断
-  const phaseConfig = getPhaseConfig();
-  const reachedMin = state.phaseTurnCount >= phaseConfig.minTurns;
-  const reachedMax = state.phaseTurnCount >= phaseConfig.maxTurns;
-  const isTransitional = state.currentPhase === 'define' || state.currentPhase === 'future';
-
-  const recentLen = state.recentUserLengths.slice(-3);
-  const avgLen = recentLen.length > 0
-    ? recentLen.reduce((a, b) => a + b, 0) / recentLen.length
-    : 0;
-  const shallowCount = recentLen.filter(l => l < 10).length;
-  const isShallowEngagement = avgLen < 15 && shallowCount >= 2;
-  const phaseDuration = (Date.now() - state.phaseStartTime) / 1000;
-  const isTooFast = phaseDuration < 30 && reachedMin;
-
-  // 决定下一步
-  const isLastPhase = state.currentPhase === 'future';
-  const shouldComplete = result.conversationComplete || (isLastPhase && reachedMin);
-  const shouldAdvance = !shouldComplete && (
-    reachedMax ||
-    (isTransitional && reachedMin) ||
-    (reachedMin && result.phaseComplete && !isShallowEngagement && !isTooFast)
-  );
-
-  // 先 type 出 AI 的主追问
   await typeQuestion(main);
 
-  if (shouldComplete) {
-    state.conversationComplete = true;
+  // 收束处理
+  if (state.isWindingDown) {
     state.isAiTyping = false;
-    // 隐藏输入条,等用户读完最后这句话再点"看快照"
-    $('inputBar').style.display = 'none';
-    $('historyToggle').style.opacity = '0.4';
-    // 给读最后一句话的时间,然后慢慢显出 CTA
-    await sleep(1500);
-    $('completionBar').classList.add('show');
+    showWindDownOptions(result.wind_down_hint);
     return;
   }
 
-  if (shouldAdvance) {
-    await sleep(800);
-    await transitionPhase();
-    // 不主动触发新阶段第一问 —— AI 的过渡语已经搭好桥,等用户回应即可
-    await sleep(300);
-    state.isAiTyping = false;
-    enableInput();
-    return;
-  }
-
-  // 不推进,继续当前阶段 —— 让用户先读完追问,3 秒后脚手架淡淡浮现
+  // 正常继续
   if (scaffold) scheduleScaffold(scaffold);
   state.isAiTyping = false;
   enableInput();
+}
+
+function showWindDownOptions(hint) {
+  const bar = $('completionBar');
+  const hintEl = bar.querySelector('.completion-hint');
+  const btnEl = bar.querySelector('.completion-btn');
+
+  hintEl.textContent = hint || '这次的思考，想继续聊还是整理一下？';
+  btnEl.textContent = '整理一下 →';
+
+  // 添加或更新"继续聊"按钮
+  let continueBtn = $('windDownContinue');
+  if (!continueBtn) {
+    continueBtn = document.createElement('button');
+    continueBtn.id = 'windDownContinue';
+    continueBtn.className = 'completion-btn secondary';
+    continueBtn.onclick = () => {
+      state.isWindingDown = false;
+      bar.classList.remove('show');
+      enableInput();
+    };
+    bar.insertBefore(continueBtn, btnEl);
+  }
+  continueBtn.textContent = '继续聊';
+  continueBtn.style.display = '';
+
+  bar.classList.add('show');
 }
 
 // ============================================================
@@ -546,6 +492,7 @@ $('historyClose').addEventListener('click', () => {
 
 $('viewSnapshotBtn').addEventListener('click', async () => {
   $('completionBar').classList.remove('show');
+  state.isWindingDown = false;
   await sleep(400);
   await generateSnapshot();
 });
@@ -569,7 +516,7 @@ document.addEventListener('touchend', (e) => {
 //  决策快照
 // ============================================================
 async function generateSnapshot() {
-  trackEvent('snapshot_generate', { totalTurns: state.totalTurnCount });
+  trackEvent('snapshot_generate', { totalTurns: state.roundCount });
 
   // 切换到 snapshot 屏先放一个 loading
   $('snapshotContent').innerHTML = `
@@ -648,7 +595,7 @@ function renderSnapshot(data) {
       confidence,
       title: data.title,
       type: data.type,
-      totalTurns: state.totalTurnCount,
+      totalTurns: state.roundCount,
     });
   }
 
