@@ -269,7 +269,7 @@ ${dialogue}
 
 ## 输出 JSON 结构(严格遵守)
 {
-  "schema_version": "v3",
+  "schema_version": "v4",
   "title": "决策的简短标题(15字以内,第二人称,如'要不要辞职去创业')",
   "type": "职业 | 关系 | 城市 | 投资 | 教育 | 人生 | 其他",
   "hero_quote": "用户原话中最戳的一句(逐字摘出,不改写)",
@@ -292,6 +292,7 @@ ${dialogue}
    - ❌ "到了...阶段"、"在...阶段"、"进一步...时"
    - ❌ "关于..."、"谈到..."、"聊到..."
    - ❌ 任何流程性叙述（谁先说了什么、后说了什么）
+   - ❌ "define"、"stance"、"premortem"、"blindspot"、"future" 等阶段术语
 5. 用"……"做留白分隔场景。省略所有中间过程和次要细节。
 6. 只保留最锋利的弧线：表面的纠结 → 往下挖时遇到的阻力 → 最后戳到的那句话。
 7. 长度 200-350 字。要短、要有呼吸感、要让读者想重读。
@@ -382,7 +383,7 @@ function validateSnapshot(snapshot, messages) {
 
   return {
     ...snapshot,
-    schema_version: snapshot.schema_version || 'v3',
+    schema_version: snapshot.schema_version || 'v4',
     annotations: kept,
   };
 }
