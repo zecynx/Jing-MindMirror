@@ -7,7 +7,6 @@ const db = require('../db');
 const requireUserId = require('../middleware/require-user');
 const { LLM_BASE_URL, LLM_API_KEY, LLM_MODEL } = require('../llm-config');
 const { buildDeepSystemPrompt } = require('../prompts/deep-prompt');
-const { getPhaseTemperature } = require('../prompts/phases');
 const { responseQualityCheck } = require('../prompts/quality-gate');
 
 const router = express.Router();
@@ -46,7 +45,7 @@ router.post('/chat', requireUserId, async (req, res) => {
       body: JSON.stringify({
         model: LLM_MODEL,
         messages: apiMessages,
-        temperature: getPhaseTemperature(phase || 'define'),
+        temperature: 0.7,
         max_tokens: 800,
         top_p: 0.85,
         frequency_penalty: 0.3,
