@@ -1,150 +1,125 @@
-# 思维棱镜 (Prism) — 帮你想完整
+# 镜 · MindMirror
 
-一个苏格拉底式决策思维伙伴，通过5阶段结构化对话帮你把决策想完整，而不是帮你做决定。
+> 一个帮你"把事想完整"的对话式思考工具。
+> 你说一件事，它通过提问帮你梳理，最后给你一份**决策快照**。
 
-## 部署信息
+不是聊天机器人，不给建议，不替你做决定 —— 它只负责把你脑子里那些没说清楚的东西问出来。
 
-### CloudBase 环境
+## 它长什么样
 
-| 项目 | 值 |
-|------|------|
-| 环境ID | `prism-mvp-d7grhmf61a0b12522` |
-| 地域 | 上海 (ap-shanghai) |
-| 套餐 | 体验版 |
+- **起始屏**：写下今天卡住的事
+- **对话屏**：AI 一次只问一个问题，按"事实 → 情绪 → 价值 → 行动"四个阶段推进
+- **决策快照**：聊完生成一张可保存/截图的卡片，记录你想清楚的结论
+- **历史决策**：本地存档，随时回看自己的思考轨迹
 
-### 后端服务 (Cloud Run)
+数据全部存在你自己电脑上的 JSON 文件里（`prototype/data/`），不上传任何服务器。
 
-| 项目 | 值 |
-|------|------|
-| 服务名 | `prism-backend` |
-| 类型 | 容器型 |
-| 访问地址 | `https://prism-backend-247309-5-1259376615.sh.run.tcloudbase.com` |
-| 端口 | 3000 |
-| CPU/内存 | 0.5核 / 1GB |
-| 实例数 | 1~5 (CPU 60% 自动扩缩) |
-| 镜像 | Node.js Alpine |
+---
 
-### 前端 (静态托管)
+## 本地跑起来
 
-| 项目 | 值 |
-|------|------|
-| 访问地址 | `https://prism-mvp-d7grhmf61a0b12522-1259376615.tcloudbaseapp.com/index.html` |
+### 0. 你需要
 
-### API 端点
+- Node.js ≥ 18（自带 `fetch`，无需其他依赖）
+- 一个 LLM 的 API Key（默认用 [DeepSeek](https://platform.deepseek.com)，便宜且中文好；也兼容 OpenAI / 硅基流动 / Moonshot 等任何 OpenAI 协议接口）
 
-| 路径 | 方法 | 说明 |
-|------|------|------|
-| `/api/health` | GET | 健康检查 |
-| `/api/chat` | POST | LLM 对话代理 |
-| `/api/snapshot` | POST | 决策快照生成 |
-| `/api/conversations` | POST/GET | 对话 CRUD |
-| `/api/conversations/:id` | GET/DELETE | 单条对话 |
-| `/api/events` | POST | 埋点事件 |
-| `/api/user` | GET | 用户信息 |
-| `/api/stats` | GET | 管理统计 |
+### 1. 克隆 + 装依赖
 
-### 环境变量
+```bash
+git clone https://github.com/<your-name>/MindMirror.git
+cd MindMirror/prototype
+npm install
+```
 
-后端服务需要配置以下环境变量（Cloud Run 控制台设置）：
+### 2. 配置 API Key
 
-| 变量 | 说明 | 默认值 |
-|------|------|--------|
-| `LLM_BASE_URL` | LLM API 地址 | `https://api.deepseek.com` |
-| `LLM_API_KEY` | LLM API 密钥 | **必填** |
-| `LLM_MODEL` | 模型名称 | `deepseek-chat` |
-| `NODE_ENV` | 运行环境 | `production` |
+```bash
+# macOS / Linux
+cp .env.example .env
 
-> ⚠️ `LLM_API_KEY` 必须在 Cloud Run 控制台中配置，不要硬编码在代码中。
+# Windows (PowerShell)
+Copy-Item .env.example .env
+```
 
-## CloudBase 控制台
+打开 `.env`，填入你的 API Key：
 
-- 环境概览: https://tcb.cloud.tencent.com/dev?envId=prism-mvp-d7grhmf61a0b12522#/overview
-- 云托管服务: https://tcb.cloud.tencent.com/dev?envId=prism-mvp-d7grhmf61a0b12522#/platform-run
-- 静态托管: https://tcb.cloud.tencent.com/dev?envId=prism-mvp-d7grhmf61a0b12522#/static-hosting
-- 环境设置: https://tcb.cloud.tencent.com/dev?envId=prism-mvp-d7grhmf61a0b12522#/env
+```env
+LLM_BASE_URL=https://api.deepseek.com
+LLM_API_KEY=sk-你的密钥
+LLM_MODEL=deepseek-chat
+```
 
-## 本地开发
+> 想换别的模型？`.env.example` 里写了 OpenAI / SiliconFlow / Moonshot 的现成例子，取消注释改一下就行。
+
+### 3. 启动
+
+```bash
+npm start
+```
+
+看到这个就成了：
+
+```
+🔮 镜·MindLens V2 服务器已启动
+   地址: http://localhost:3000
+   LLM:  deepseek-chat @ https://api.deepseek.com
+   API:  ✅ 已配置
+```
+
+浏览器打开 **http://localhost:3000**，就可以开始用了。
+
+---
+
+## 目录结构
+
+```
+MindMirror/
+├── prototype/              # 代码主体（npm 命令都在这里跑）
+│   ├── server.js           # Express 入口
+│   ├── routes/             # API 路由（chat / conversations / system）
+│   ├── prompts/            # Prompt 工程层
+│   ├── public/             # 前端（纯静态：index.html / app.js / styles.css）
+│   ├── db.js               # JSON 文件数据库
+│   └── data/               # 你的对话数据（自动创建，已 gitignore）
+└── archive/docs-v1-v4/     # 历史 PRD 归档
+```
+
+整个前端是**纯静态**的（一个 HTML + 一个 JS + 一个 CSS），后端是个薄薄的 Express 代理 + JSON 文件存储 —— 没有数据库、没有构建步骤、没有框架。
+
+---
+
+## Docker（可选）
 
 ```bash
 cd prototype
-
-# 1. 配置环境变量
-cp .env.example .env
-# 编辑 .env，填入 LLM_API_KEY
-
-# 2. 安装依赖
-npm install
-
-# 3. 启动服务
-npm start
-
-# 4. 打开浏览器
-# http://localhost:3000
+docker build -t mindmirror .
+docker run -p 3000:3000 --env-file .env mindmirror
 ```
 
-## 项目结构
+---
 
-```
-prototype/
-├── server.js              # Express 启动器(挂路由 + 静态托管)
-├── llm-config.js          # LLM 配置(从 .env 读取)
-├── db.js                  # JSON 文件数据库
-│
-├── prompts/               # Prompt 工程层
-│   ├── phases.js          # 5 阶段 angle/temperature/scaffolding 表
-│   ├── deep-prompt.js     # 深度模式 system prompt 构建 + 上下文富化
-│   └── quality-gate.js    # LLM 回复质量守门(8 条规则 + 重试)
-│
-├── routes/                # API 路由
-│   ├── chat.js            # /api/chat /api/snapshot
-│   ├── conversations.js   # /api/conversations CRUD
-│   └── system.js          # /api/health /api/stats /api/user /api/events
-│
-├── middleware/
-│   └── require-user.js    # x-user-id 中间件
-│
-├── public/                # 静态前端(Express static 根)
-│   ├── index.html         # HTML 骨架(~110 行)
-│   ├── styles.css         # 全局样式
-│   └── app.js             # 主前端逻辑
-│
-├── Dockerfile             # Cloud Run 容器配置
-├── .dockerignore          # Docker 忽略文件
-├── .env.example           # 环境变量模板
-├── .env                   # 环境变量(不提交)
-├── .gitignore             # Git 忽略文件
-├── package.json           # Node.js 依赖
-└── data/                  # 数据存储(不提交)
-    ├── users.json
-    ├── conversations.json
-    └── events.json
-```
+## 常见问题
 
-> 模块化拆分原则:
-> - **prompts/** 是产品护城河,需要反复调试 → 每个文件 < 300 行
-> - **routes/** 按职责切分,新增 API 时只动一个文件
-> - **public/** 为后续上 Vue/Vite 做准备(届时改为 `dist/`)
+**Q：API Key 会泄露吗？**
+不会。`.env` 已在 `.gitignore` 里，永远不会被提交。Key 只在你本地机器上、由后端代理调用 LLM。
 
-## 更新部署
+**Q：我的对话数据存哪里？**
+`prototype/data/` 下三个 JSON 文件：`users.json`、`conversations.json`、`events.json`。备份/迁移都直接拷走这个目录就行。
 
-### 更新后端
+**Q：能不能换成本地模型？**
+可以，任何兼容 OpenAI Chat Completions 协议的接口都行（Ollama、LM Studio、vLLM 等），改 `LLM_BASE_URL` 就完事。
 
-修改代码后，重新部署 Cloud Run 服务：
+---
 
-1. 在 CloudBase 控制台 → 云托管 → prism-backend → 版本管理
-2. 点击「新建版本」→ 上传代码包
-3. 或使用 CLI: `tcb fn deploy prism-backend`
+## License
 
-### 更新前端
+**PolyForm Noncommercial License 1.0.0**
 
-修改 `public/index.html` / `public/styles.css` / `public/app.js` 后,重新上传到静态托管:
+简单说：
+- ✅ 个人使用、学习、研究、改着玩 —— 随便
+- ✅ 学术/教学/非商业的分享与二次开发 —— 随便
+- ❌ **不允许任何商业用途**，包括但不限于：作为产品对外提供、向用户收费、内部工具节省成本、改名重新发布卖钱
 
-1. 在 CloudBase 控制台 → 静态托管
-2. 上传覆盖 `public/` 下的对应文件
+如果你想商用，请通过 GitHub Issues 联系作者单独谈授权。
 
-## 安全说明
-
-- API Key 只存在于服务端环境变量，前端无法访问
-- `.env` 文件已在 `.gitignore` 中排除
-- `data/` 目录已在 `.gitignore` 中排除
-- 前端通过服务端代理调用 LLM，不直接暴露 API Key
+完整协议文本见 [`LICENSE`](./LICENSE)（或 https://polyformproject.org/licenses/noncommercial/1.0.0/）。
