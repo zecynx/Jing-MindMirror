@@ -54,13 +54,90 @@
   }
   .shot-frame {
     width: 390px;
-    height: 844px;
+    min-height: 520px;
+    height: auto;
     background: var(--bg);
     border: 8px solid #222;
     border-radius: 40px;
     overflow: hidden;
     position: relative;
     box-shadow: 0 24px 80px rgba(0,0,0,0.5);
+  }
+  .shot-frame.x34 {
+    width: 390px;
+    min-height: 520px;
+    height: auto;
+    border-radius: 32px;
+  }
+  /* 生成模式：用于 Playwright 批量导出，元素自然高度 */
+  body.generate-mode .shot-controls {
+    display: none;
+  }
+  body.generate-mode .shot-stage {
+    margin-top: 0;
+    padding: 0;
+    gap: 0;
+    align-items: flex-start;
+  }
+  body.generate-mode .shot-label {
+    display: none;
+  }
+  body.generate-mode .shot-frame {
+    width: 390px;
+    height: auto;
+    min-height: auto;
+    border: none;
+    border-radius: 0;
+    box-shadow: none;
+    margin-bottom: 0;
+    overflow: visible;
+  }
+  body.generate-mode .shot-frame-inner {
+    height: auto;
+    min-height: auto;
+    overflow: visible;
+  }
+  body.generate-mode .capture-target {
+    position: relative;
+    inset: auto;
+    top: auto;
+    left: auto;
+    right: auto;
+    bottom: auto;
+    width: 100%;
+    height: auto;
+    min-height: auto;
+    max-height: none;
+    overflow: visible;
+  }
+  body.generate-mode .capture-target.qa-card-screen {
+    display: block;
+  }
+  body.generate-mode .capture-target:not(.qa-card-screen) {
+    display: flex;
+    flex-direction: column;
+  }
+  body.generate-mode .qa-card {
+    min-height: auto;
+    flex: none;
+    height: auto;
+  }
+  body.generate-mode .screen.snapshot-mode, body.generate-mode #screen-snapshot-m1, body.generate-mode .screen[id^="screen-snapshot-"] {
+    position: relative;
+    min-height: auto;
+    height: auto;
+    overflow: visible;
+  }
+  body.generate-mode .screen[id^="screen-snapshot-"] .dialogue-header {
+    position: relative;
+    flex-shrink: 0;
+  }
+  body.generate-mode .screen[id^="screen-snapshot-"] .snapshot-area {
+    flex: none;
+    min-height: auto;
+    height: auto;
+    overflow: visible;
+    padding-bottom: 48px;
   }
   .shot-frame-inner {
     width: 100%;
@@ -192,6 +269,120 @@
   .snapshot-actions, .end-btn {
     display: none !important;
   }
+
+  /* ==================== 3:4 单轮问答卡片 ==================== */
+  .qa-card {
+    width: 100%;
+    min-height: 100%;
+    background: var(--bg);
+    display: flex;
+    flex-direction: column;
+    padding: 48px 32px 56px;
+    box-sizing: border-box;
+  }
+  .qa-card-brand {
+    text-align: center;
+    margin-bottom: 56px;
+  }
+  .qa-card-brand-mark {
+    font-family: var(--serif);
+    font-size: 14px;
+    font-weight: 600;
+    letter-spacing: 6px;
+    color: var(--text-soft);
+  }
+  .qa-card-brand-sub {
+    font-family: var(--sans);
+    font-size: 10px;
+    letter-spacing: 3px;
+    color: var(--text-faint);
+    margin-top: 8px;
+    text-transform: uppercase;
+  }
+  .qa-exchange {
+    display: flex;
+    flex-direction: column;
+    gap: 42px;
+    flex: 1;
+    justify-content: center;
+  }
+  .qa-bubble-wrap {
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+  }
+  .qa-bubble-wrap.ai {
+    align-items: flex-start;
+  }
+  .qa-bubble-wrap.user {
+    align-items: flex-end;
+  }
+  .qa-actor {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    font-size: 11px;
+    letter-spacing: 2px;
+    color: var(--text-faint);
+    text-transform: uppercase;
+  }
+  .qa-avatar {
+    width: 20px;
+    height: 20px;
+    border-radius: 50%;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 10px;
+    font-family: var(--serif);
+  }
+  .qa-bubble-wrap.ai .qa-avatar {
+    background: rgba(212,165,116,0.12);
+    color: var(--accent);
+    border: 1px solid var(--accent-soft);
+  }
+  .qa-bubble-wrap.user .qa-avatar {
+    background: rgba(255,255,255,0.06);
+    color: var(--text-soft);
+    border: 1px solid var(--line-strong);
+  }
+  .qa-bubble {
+    max-width: 92%;
+    padding: 20px 22px;
+    border-radius: 20px;
+    font-size: 19px;
+    line-height: 1.75;
+    letter-spacing: 0.3px;
+  }
+  .qa-bubble-wrap.ai .qa-bubble {
+    background: rgba(255,255,255,0.06);
+    color: var(--text);
+    border-bottom-left-radius: 4px;
+    font-family: var(--sans);
+  }
+  .qa-bubble-wrap.user .qa-bubble {
+    background: var(--accent-glow);
+    border: 1px solid var(--accent-soft);
+    color: var(--accent);
+    border-bottom-right-radius: 4px;
+    font-family: var(--serif);
+  }
+  .qa-card-footer {
+    margin-top: 48px;
+    text-align: center;
+  }
+  .qa-card-footer-line {
+    width: 40px;
+    height: 1px;
+    background: var(--line-strong);
+    margin: 0 auto 14px;
+  }
+  .qa-card-footer-text {
+    font-family: var(--serif);
+    font-size: 13px;
+    color: var(--text-soft);
+    letter-spacing: 2px;
+  }
 </style>
 </head>
 <body>
@@ -200,10 +391,9 @@
   <select id="materialSelect"></select>
   <label>视图：</label>
   <select id="viewSelect">
-    <option value="home">首页</option>
-    <option value="dialogue">对话页</option>
-    <option value="snapshot">决策快照</option>
     <option value="all">全部</option>
+    <option value="qa">问答卡</option>
+    <option value="snapshot">决策快照</option>
   </select>
   <button class="primary" onclick="exportCurrent()">导出当前视图 PNG</button>
   <button onclick="exportAll()">导出全部</button>
@@ -228,6 +418,10 @@
         { role: 'user', text: '我觉得我会让我妈失望。她一直很以我为荣。' },
         { role: 'ai', text: '所以比起没钱，你更怕的是她对你的看法？' },
         { role: 'user', text: '对……其实我怕的不是找不到工作，是怕我妈失望。' },
+      ],
+      qaCards: [
+        { q: '先不急着判断“该不该辞”。你刚才说“怕养不活自己”——这个“怕”里，最坏的情况是什么？', a: '最坏就是找不到工作，房租都交不起，还要靠家里。' },
+        { q: '如果那一幕真的发生了，你会觉得自己是一个“失败的人”，还是觉得“只是暂时没收入”？', a: '我觉得我会让我妈失望。她一直很以我为荣。' },
       ],
       snapshot: {
         title: '要不要辞职',
@@ -254,6 +448,10 @@
         { role: 'ai', text: '熟悉感对你意味着什么？' },
         { role: 'user', text: '在上海没人认识真正的我，但也许……我会更喜欢那个重新开始的自己。' },
       ],
+      qaCards: [
+        { q: '如果把“去”和“不去”暂时放一边，你现在脑子里最乱的是什么？', a: '收入和房租。上海工资高，但房租也贵，算下来没差多少。' },
+        { q: '那除去这些数字，有什么是你在深圳有、在上海可能没有的？', a: '朋友吧。还有……一种熟悉感。在上海没人认识真正的我，但也许我会更喜欢那个重新开始的自己。' },
+      ],
       snapshot: {
         title: '要不要搬去上海',
         type: '人生',
@@ -278,6 +476,10 @@
         { role: 'user', text: '被照顾。还有不用假装自己过得很好。' },
         { role: 'ai', text: '那留在这里，你又在保护什么？' },
         { role: 'user', text: '我怕回去了就再也出不来了。' },
+      ],
+      qaCards: [
+        { q: '“回去”对你来说，是回到一个城市，还是回到一种生活？', a: '回到一种生活吧。我爸妈在，同学也在，节奏慢一点。' },
+        { q: '那留在这里，你又在保护什么？', a: '我怕回去了就再也出不来了。' },
       ],
       snapshot: {
         title: '要不要离开北京',
@@ -304,6 +506,10 @@
         { role: 'ai', text: '那这次你“后悔”的会是什么？' },
         { role: 'user', text: '我好像一直选让我害怕的，不是因为想要，是因为不敢承认我想要安全的。' },
       ],
+      qaCards: [
+        { q: '如果完全不看薪资和头衔，这两个选择分别给你什么感觉？', a: '稳定那个让我觉得安全，但有点闷。冒险那个让我兴奋，也害怕。' },
+        { q: '那这次你“后悔”的会是什么？', a: '我好像一直选让我害怕的，不是因为想要，是因为不敢承认我想要安全的。' },
+      ],
       snapshot: {
         title: '要不要接这个 offer',
         type: '职业',
@@ -328,6 +534,10 @@
         { role: 'user', text: '每次有矛盾，我都得先低头。我觉得他根本不想理解我。' },
         { role: 'ai', text: '如果三年后的你回看这段关系，你会怎么描述它？' },
         { role: 'user', text: '我会说，那不是一段让我更喜欢自己的关系。' },
+      ],
+      qaCards: [
+        { q: '“累”的这一刻，最消耗你的是什么？', a: '每次有矛盾，我都得先低头。我觉得他根本不想理解我。' },
+        { q: '如果三年后的你回看这段关系，你会怎么描述它？', a: '我会说，那不是一段让我更喜欢自己的关系。' },
       ],
       snapshot: {
         title: '要不要和他说清楚',
@@ -354,6 +564,10 @@
         { role: 'ai', text: '“没人看”和“帮人整理故事”，哪个更让你有冲动？' },
         { role: 'user', text: '我想做副业，不是因为缺钱，是想证明我不是只有工作这一面。' },
       ],
+      qaCards: [
+        { q: '先不问“做什么”。你做什么事情的时候，会忘记时间？', a: '写东西吧。写的时候很安静，也没想着赚钱。' },
+        { q: '“没人看”和“帮人整理故事”，哪个更让你有冲动？', a: '我想做副业，不是因为缺钱，是想证明我不是只有工作这一面。' },
+      ],
       snapshot: {
         title: '我想搞副业，但不知道做什么',
         type: '职业',
@@ -378,6 +592,10 @@
         { role: 'user', text: '我好像一直在等他变。' },
         { role: 'ai', text: '“等他变”这件事，你等了多久了？' },
         { role: 'user', text: '我是在害怕失去他，还是害怕承认我早就想走了？' },
+      ],
+      qaCards: [
+        { q: '如果我不问你“该不该分”，而是问你“理想的关系是什么样的”，你会怎么回答？', a: '就是能感觉到自己被尊重，有话可以说。' },
+        { q: '“等他变”这件事，你等了多久了？', a: '我是在害怕失去他，还是害怕承认我早就想走了？' },
       ],
       snapshot: {
         title: '该不该分手',
@@ -404,6 +622,10 @@
         { role: 'ai', text: '一个可以说服自己的理由？' },
         { role: 'user', text: '我不是在找一个更好的选项，我是在找一个能说服自己的理由。' },
       ],
+      qaCards: [
+        { q: '那种“慌”是因为答案不对，还是因为你还没准备好做决定？', a: '可能是我还没准备好。我其实需要的是一个理由。' },
+        { q: '一个可以说服自己的理由？', a: '我不是在找一个更好的选项，我是在找一个能说服自己的理由。' },
+      ],
       snapshot: {
         title: '要不要辞职',
         type: '职业',
@@ -428,6 +650,10 @@
         { role: 'user', text: '其实我也不知道。我爸妈希望我考研，我朋友说要出国看看。' },
         { role: 'ai', text: '所以比起“哪条路更好”，你更想知道什么？' },
         { role: 'user', text: '我想知道哪条路失败了我也不会怪自己。' },
+      ],
+      qaCards: [
+        { q: '“选错”的标准是谁的？你的，还是别人的？', a: '其实我也不知道。我爸妈希望我考研，我朋友说要出国看看。' },
+        { q: '所以比起“哪条路更好”，你更想知道什么？', a: '我想知道哪条路失败了我也不会怪自己。' },
       ],
       snapshot: {
         title: '毕业后该做什么',
@@ -454,6 +680,10 @@
         { role: 'ai', text: '如果被拒绝了，你会怎么看自己？' },
         { role: 'user', text: '我不是在等他回我，我是在等自己不再害怕被拒绝。' },
       ],
+      qaCards: [
+        { q: '“怕错过”和“怕打扰”，哪个更让你睡不着？', a: '怕错过吧。但更深处是怕自己被拒绝。' },
+        { q: '如果被拒绝了，你会怎么看自己？', a: '我不是在等他回我，我是在等自己不再害怕被拒绝。' },
+      ],
       snapshot: {
         title: '今晚的小纠结',
         type: '其他',
@@ -465,6 +695,64 @@
         ],
         schema_version: 'v3',
         confidence: 5,
+      },
+    },
+    {
+      id: 'm11',
+      name: '素材11：Vibe Coding 向',
+      homeInput: '我想做一个不一样的 AI 工具。',
+      dialogue: [
+        { role: 'ai', text: '你想做的不一样，是功能不一样，还是价值观不一样？' },
+        { role: 'user', text: '功能上可能都差不多，但我想让它不抢答。' },
+        { role: 'ai', text: '“不抢答”对你来说意味着什么？' },
+        { role: 'user', text: '现在 AI 都在替人决定，我想把思考还给用户。' },
+        { role: 'ai', text: '如果用户已经习惯被给答案，你怎么让他们愿意被提问？' },
+        { role: 'user', text: '如果 AI 只会给答案，那思考就死了。我想让它把思考还给用户。' },
+      ],
+      qaCards: [
+        { q: '你想做的不一样，是功能不一样，还是价值观不一样？', a: '功能上可能都差不多，但我想让它不抢答。' },
+        { q: '“不抢答”对你来说意味着什么？', a: '现在 AI 都在替人决定，我想把思考还给用户。' },
+      ],
+      snapshot: {
+        title: '我要做一款只提问的 AI',
+        type: '其他',
+        hero_quote: '如果 AI 只会给答案，那思考就死了。',
+        essay: '你今天来，带着这件事：\n\n我想做一个不一样的 AI 工具。\n\n你说了很多关于市场和效率的话。\n\n然后你说：\n\n“如果 AI 只会给答案，那思考就死了。我想让它把思考还给用户。”\n\n那一刻，这不是一个项目，是一个实验。',
+        annotations: [
+          { anchor: '市场和效率', type: 'observation', comment: '理性的赛道分析，掩盖不了你想捍卫的东西。' },
+          { anchor: '把思考还给用户', type: 'reflection', comment: '你的差异化不是功能，是一种关系。' },
+        ],
+        schema_version: 'v3',
+        confidence: 7,
+      },
+    },
+    {
+      id: 'm12',
+      name: '素材12：Agent 设计向',
+      homeInput: '市面上的 AI 都在抢答，我想做一个只提问的 Agent。',
+      dialogue: [
+        { role: 'ai', text: '如果 Agent 不回答问题，那它完成的目标是什么？' },
+        { role: 'user', text: '让用户自己找到答案。' },
+        { role: 'ai', text: '那和一个好的心理咨询师有什么区别？' },
+        { role: 'user', text: '它更轻、更即时、不会评判，也没有关系负担。' },
+        { role: 'ai', text: '那它最好的状态，是让用户离不开它，还是让用户不再需要它？' },
+        { role: 'user', text: '也许最好的 Agent，不是知道答案的那个，是让你终于敢说出自己答案的那个。' },
+      ],
+      qaCards: [
+        { q: '如果 Agent 不回答问题，那它完成的目标是什么？', a: '让用户自己找到答案。' },
+        { q: '那它最好的状态，是让用户离不开它，还是让用户不再需要它？', a: '也许最好的 Agent，不是知道答案的那个，是让你终于敢说出自己答案的那个。' },
+      ],
+      snapshot: {
+        title: '我要做一个不回答问题的 Agent',
+        type: '其他',
+        hero_quote: '让你终于敢说出自己答案的那个。',
+        essay: '你今天来，带着这件事：\n\n市面上的 AI 都在抢答，我想做一个只提问的 Agent。\n\n你画了很多流程图，写了很多 prompt。\n\n然后你停下来，说：\n\n“也许最好的 Agent，不是知道答案的那个，是让你终于敢说出自己答案的那个。”\n\n那一刻，产品目标变了。',
+        annotations: [
+          { anchor: '画了很多流程图，写了很多 prompt', type: 'observation', comment: '系统设计再完善，也比不上对目标的重新看见。' },
+          { anchor: '终于敢说出自己答案', type: 'reflection', comment: 'Agent 的终点不是效率，是人的勇气。' },
+        ],
+        schema_version: 'v3',
+        confidence: 7,
       },
     },
   ];
@@ -606,6 +894,34 @@
     `;
   }
 
+  function renderQACard(shot, qaIndex) {
+    const qa = shot.qaCards[qaIndex];
+    return `
+      <section class="screen active qa-card-screen capture-target" id="screen-qa-${shot.id}-${qaIndex}">
+        <div class="qa-card">
+          <div class="qa-card-brand">
+            <div class="qa-card-brand-mark">镜</div>
+            <div class="qa-card-brand-sub">一次只问一个问题</div>
+          </div>
+          <div class="qa-exchange">
+            <div class="qa-bubble-wrap ai">
+              <div class="qa-actor"><span class="qa-avatar">镜</span> AI 提问</div>
+              <div class="qa-bubble">${escapeHtml(qa.q)}</div>
+            </div>
+            <div class="qa-bubble-wrap user">
+              <div class="qa-actor"><span class="qa-avatar">你</span> 你的回答</div>
+              <div class="qa-bubble">${escapeHtml(qa.a)}</div>
+            </div>
+          </div>
+          <div class="qa-card-footer">
+            <div class="qa-card-footer-line"></div>
+            <div class="qa-card-footer-text">MindMirror · 把事想完整</div>
+          </div>
+        </div>
+      </section>
+    `;
+  }
+
   function renderSnapshot(shot) {
     const now = new Date();
     const calDate = new Date();
@@ -613,7 +929,7 @@
     const calDateStr = `${calDate.getFullYear()} 年 ${calDate.getMonth() + 1} 月 ${calDate.getDate()} 日`;
     const confidence = clampConfidence(shot.snapshot.confidence);
     return `
-      <section class="screen active" id="screen-snapshot-${shot.id}">
+      <section class="screen active capture-target" id="screen-snapshot-${shot.id}">
         <header class="dialogue-header">
           <button class="back-btn">←</button>
           <span class="brand-mark">镜</span>
@@ -634,25 +950,43 @@
     const shots = shotId === 'all' ? SHOTS : SHOTS.filter(s => s.id === shotId);
 
     for (const shot of shots) {
-      const panels = view === 'all' ? ['home', 'dialogue', 'snapshot'] : [view];
+      let panels;
+      if (view === 'all') {
+        panels = [];
+        for (let i = 0; i < (shot.qaCards?.length || 0); i++) panels.push(`qa-${i}`);
+        panels.push('snapshot');
+      } else if (view === 'snapshot') {
+        panels = ['snapshot'];
+      } else if (view === 'qa') {
+        panels = [];
+        for (let i = 0; i < (shot.qaCards?.length || 0); i++) panels.push(`qa-${i}`);
+      } else {
+        panels = [view];
+      }
+
       for (const panel of panels) {
+        const isQA = panel.startsWith('qa-');
+        const qaIndex = isQA ? parseInt(panel.split('-')[1], 10) : -1;
+        const panelName = isQA ? `问答卡 ${qaIndex + 1}` : panel === 'snapshot' ? '决策快照' : panel;
+
         const label = document.createElement('div');
         label.className = 'shot-label';
-        label.textContent = `${shot.name} · ${panel === 'home' ? '首页' : panel === 'dialogue' ? '对话页' : '决策快照'}`;
+        label.textContent = `${shot.name} · ${panelName}`;
         stage.appendChild(label);
 
         const frame = document.createElement('div');
-        frame.className = 'shot-frame';
+        frame.className = 'shot-frame x34';
         frame.dataset.shot = shot.id;
         frame.dataset.panel = panel;
 
         const inner = document.createElement('div');
-        inner.className = 'shot-frame-inner' + (panel === 'dialogue' ? ' dialogue-capture' : '');
+        inner.className = 'shot-frame-inner';
         inner.id = `frame-${shot.id}-${panel}`;
 
-        if (panel === 'home') inner.innerHTML = renderHome(shot);
+        if (isQA) inner.innerHTML = renderQACard(shot, qaIndex);
+        else if (panel === 'snapshot') inner.innerHTML = renderSnapshot(shot);
+        else if (panel === 'home') inner.innerHTML = renderHome(shot);
         else if (panel === 'dialogue') inner.innerHTML = renderDialogue(shot);
-        else inner.innerHTML = renderSnapshot(shot);
 
         frame.appendChild(inner);
         stage.appendChild(frame);
@@ -662,11 +996,39 @@
 
   function initControls() {
     const materialSelect = document.getElementById('materialSelect');
-    materialSelect.innerHTML = '<option value="all">全部 10 组</option>' +
+    materialSelect.innerHTML = '<option value="all">全部</option>' +
       SHOTS.map(s => `<option value="${s.id}">${s.name}</option>`).join('');
 
     materialSelect.addEventListener('change', () => renderStage(document.getElementById('viewSelect').value));
     document.getElementById('viewSelect').addEventListener('change', (e) => renderStage(e.target.value));
+
+    // URL 参数模式：用于 Playwright 单独渲染某一张并 fullPage 截图
+    const params = new URLSearchParams(location.search);
+    const shotParam = params.get('shot');
+    const panelParam = params.get('panel');
+    if (shotParam && panelParam) {
+      document.body.classList.add('generate-mode');
+      document.querySelector('.shot-controls').style.display = 'none';
+      const shot = SHOTS.find(s => s.id === shotParam);
+      if (shot) {
+        const stage = document.getElementById('shotStage');
+        stage.innerHTML = '';
+        stage.style.marginTop = '0';
+        const frame = document.createElement('div');
+        frame.className = 'shot-frame x34';
+        const inner = document.createElement('div');
+        inner.className = 'shot-frame-inner';
+        inner.id = `frame-${shot.id}-${panelParam}`;
+        if (panelParam.startsWith('qa-')) {
+          inner.innerHTML = renderQACard(shot, parseInt(panelParam.split('-')[1], 10));
+        } else if (panelParam === 'snapshot') {
+          inner.innerHTML = renderSnapshot(shot);
+        }
+        frame.appendChild(inner);
+        stage.appendChild(frame);
+      }
+      return;
+    }
   }
 
   async function exportCurrent() {

@@ -6,7 +6,7 @@ const PUBLIC_DIR = path.join(__dirname, '..', 'public');
 const OUTPUT_DIR = path.join(__dirname, '..', '..', 'screenshots');
 
 const SHOTS = [
-  'm1', 'm2', 'm3', 'm4', 'm5', 'm6', 'm7', 'm8', 'm9', 'm10'
+  'm1', 'm2', 'm3', 'm4', 'm5', 'm6', 'm7', 'm8', 'm9', 'm10', 'm11', 'm12'
 ];
 
 (async () => {
@@ -28,59 +28,19 @@ const SHOTS = [
   await page.selectOption('#materialSelect', 'all');
   await page.waitForTimeout(800);
 
+  // 进入生成模式：元素自然高度，方便 Playwright 截图
+  await page.evaluate(() => document.body.classList.add('generate-mode'));
+  await page.waitForTimeout(200);
+
   for (const shot of SHOTS) {
-    for (const panel of ['home', 'dialogue', 'snapshot']) {
+    for (const panel of ['qa-0', 'qa-1', 'snapshot']) {
       const innerId = `frame-${shot}-${panel}`;
       const selector = `#${innerId}`;
-      const outPath = path.join(OUTPUT_DIR, `mindmirror-${shot}-${panel}.png`);
+      const outPath = path.join(OUTPUT_DIR, `mindmirror-${shot}-${panel.replace('qa-', 'qa')}.png`);
 
-      // 使用 html2canvas 在浏览器内渲染完整内容，避免 frame 高度截断
-      await page.evaluate(({ selector, outName }) => {
-        return new Promise((resolve, reject) => {
-          const inner = document.querySelector(selector);
-          if (!inner) return reject(new Error('missing ' + selector));
-          const frame = inner.closest('.shot-frame');
-          const originalFrameHeight = frame.style.height;
-          const originalInnerHeight = inner.style.height;
-          const originalInnerOverflow = inner.style.overflow;
-          frame.style.height = 'auto';
-          inner.style.height = 'auto';
-          inner.style.overflow = 'visible';
-
-          if (document.fonts && document.fonts.ready) {
-            document.fonts.ready.then(capture);
-          } else {
-            capture();
-          }
-
-          function capture() {
-            html2canvas(inner, {
-              backgroundColor: '#0b0b0d',
-              scale: 2,
-              useCORS: true,
-              logging: false,
-              windowWidth: inner.scrollWidth,
-              windowHeight: inner.scrollHeight,
-            }).then(canvas => {
-              frame.style.height = originalFrameHeight;
-              inner.style.height = originalInnerHeight;
-              inner.style.overflow = originalInnerOverflow;
-              window.__lastScreenshotDataUrl = canvas.toDataURL('image/png');
-              window.__lastScreenshotName = outName;
-              resolve();
-            }).catch(err => {
-              frame.style.height = originalFrameHeight;
-              inner.style.height = originalInnerHeight;
-              inner.style.overflow = originalInnerOverflow;
-              reject(err);
-            });
-          }
-        });
-      }, { selector, outName: path.basename(outPath) });
-
-      const dataUrl = await page.evaluate(() => window.__lastScreenshotDataUrl);
-      const base64 = dataUrl.replace(/^data:image\/png;base64,/, '');
-      fs.writeFileSync(outPath, Buffer.from(base64, 'base64'));
+      const el = await page.$(selector);
+      if (!el) throw new Error('missing ' + selector);
+      await el.screenshot({ path: outPath, type: 'png' });
       console.log(`✓ ${outPath}`);
     }
   }
