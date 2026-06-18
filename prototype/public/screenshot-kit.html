@@ -1,0 +1,743 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+<title>MindMirror 小红书截图素材包</title>
+<script>
+  window.__API_BASE__ = '';
+</script>
+<link rel="stylesheet" href="styles.css">
+<style>
+  /* 截图预览页专用样式 */
+  .shot-controls {
+    position: fixed;
+    top: 0; left: 0; right: 0;
+    z-index: 1000;
+    background: #1a1a1d;
+    border-bottom: 1px solid rgba(255,255,255,0.08);
+    padding: 12px 16px;
+    display: flex;
+    gap: 12px;
+    align-items: center;
+    font-size: 13px;
+    color: rgba(235,232,227,0.7);
+  }
+  .shot-controls select, .shot-controls button {
+    background: #0b0b0d;
+    color: var(--text);
+    border: 1px solid var(--line-strong);
+    padding: 6px 12px;
+    border-radius: 6px;
+    font-size: 13px;
+    cursor: pointer;
+  }
+  .shot-controls button.primary {
+    border-color: var(--accent-soft);
+    color: var(--accent);
+  }
+  .shot-stage {
+    margin-top: 64px;
+    min-height: 100vh;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 48px;
+    padding: 24px 0 120px;
+  }
+  .shot-label {
+    color: var(--text-soft);
+    font-size: 12px;
+    letter-spacing: 2px;
+    margin-bottom: 8px;
+    text-align: center;
+  }
+  .shot-frame {
+    width: 390px;
+    height: 844px;
+    background: var(--bg);
+    border: 8px solid #222;
+    border-radius: 40px;
+    overflow: hidden;
+    position: relative;
+    box-shadow: 0 24px 80px rgba(0,0,0,0.5);
+  }
+  .shot-frame-inner {
+    width: 100%;
+    height: 100%;
+    overflow-y: auto;
+    position: relative;
+  }
+  /* 覆盖 .screen fixed 定位，让截图容器正常渲染 */
+  .shot-frame-inner .screen {
+    position: absolute;
+    inset: 0;
+    opacity: 1;
+    pointer-events: auto;
+    display: flex;
+    max-width: none;
+    margin: 0;
+  }
+  .shot-frame-inner .screen:not(.active) {
+    display: none;
+  }
+  /* 用于对话页截图：完全自适应内容高度 */
+  .shot-frame-inner.dialogue-capture {
+    height: auto !important;
+    overflow: visible !important;
+  }
+  .shot-frame-inner.dialogue-capture .screen {
+    position: relative !important;
+    min-height: auto !important;
+    height: auto !important;
+    overflow: visible !important;
+  }
+  .shot-frame-inner.dialogue-capture .manual-dialogue-screen {
+    display: flex;
+    flex-direction: column;
+  }
+  .shot-frame-inner.dialogue-capture .dialogue-header {
+    position: relative;
+    flex-shrink: 0;
+  }
+  .shot-frame-inner.dialogue-capture .status-bar {
+    position: relative;
+    flex-shrink: 0;
+  }
+  .shot-frame-inner.dialogue-capture .question-area {
+    min-height: auto;
+    padding: 28px 24px;
+    flex-shrink: 0;
+  }
+  .shot-frame-inner.dialogue-capture .manual-dialogue {
+    flex: 1 0 auto;
+    padding-bottom: 32px;
+  }
+  /* 快照页同样自适应高度 */
+  .shot-frame-inner .screen#screen-snapshot-m1,
+  .shot-frame-inner .screen[id^="screen-snapshot-"] {
+    position: relative;
+    min-height: 100%;
+    height: auto;
+    overflow: visible;
+  }
+  .shot-frame-inner .screen[id^="screen-snapshot-"] .snapshot-area {
+    flex: 0 0 auto;
+    min-height: auto;
+    height: auto;
+    overflow: visible;
+    padding-bottom: 48px;
+  }
+  .shot-frame-inner.dialogue-capture .input-bar,
+  .shot-frame-inner.dialogue-capture .completion-bar,
+  .shot-frame-inner.dialogue-capture .scaffold-card {
+    display: none !important;
+  }
+  .shot-frame-inner.dialogue-capture .light-beam {
+    display: none;
+  }
+  /* 对话消息气泡覆盖，用于手动构造对话 */
+  .manual-dialogue {
+    display: flex;
+    flex-direction: column;
+    gap: 20px;
+    padding: 24px;
+  }
+  .manual-msg {
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+  }
+  .manual-msg.ai {
+    align-items: flex-start;
+  }
+  .manual-msg.user {
+    align-items: flex-end;
+  }
+  .manual-role {
+    font-size: 10px;
+    color: var(--text-faint);
+    letter-spacing: 2px;
+    text-transform: uppercase;
+  }
+  .manual-bubble {
+    max-width: 88%;
+    padding: 14px 18px;
+    border-radius: 18px;
+    font-size: 15px;
+    line-height: 1.7;
+  }
+  .manual-msg.ai .manual-bubble {
+    background: rgba(255,255,255,0.06);
+    color: var(--text);
+    border-bottom-left-radius: 4px;
+    font-family: var(--sans);
+  }
+  .manual-msg.user .manual-bubble {
+    background: var(--accent-glow);
+    border: 1px solid var(--accent-soft);
+    color: var(--accent);
+    border-bottom-right-radius: 4px;
+    font-family: var(--serif);
+  }
+  .manual-dialogue-screen .dialogue-header {
+    position: sticky;
+    top: 0;
+    background: var(--bg);
+    z-index: 10;
+  }
+  .manual-dialogue-screen .question-area {
+    display: none;
+  }
+  .snapshot-actions, .end-btn {
+    display: none !important;
+  }
+</style>
+</head>
+<body>
+<div class="shot-controls">
+  <label>素材：</label>
+  <select id="materialSelect"></select>
+  <label>视图：</label>
+  <select id="viewSelect">
+    <option value="home">首页</option>
+    <option value="dialogue">对话页</option>
+    <option value="snapshot">决策快照</option>
+    <option value="all">全部</option>
+  </select>
+  <button class="primary" onclick="exportCurrent()">导出当前视图 PNG</button>
+  <button onclick="exportAll()">导出全部</button>
+</div>
+
+<div class="shot-stage" id="shotStage"></div>
+
+<script src="https://cdn.jsdelivr.net/npm/html2canvas@1.4.1/dist/html2canvas.min.js"></script>
+<script>
+  // ============================================================
+  //  10 组小红书截图数据
+  // ============================================================
+  const SHOTS = [
+    {
+      id: 'm1',
+      name: '素材1：结果反差型（辞职）',
+      homeInput: '我想辞职，但怕养不活自己。',
+      dialogue: [
+        { role: 'ai', text: '先不急着判断“该不该辞”。你刚才说“怕养不活自己”——这个“怕”里，最坏的情况是什么？' },
+        { role: 'user', text: '最坏就是找不到工作，房租都交不起，还要靠家里。' },
+        { role: 'ai', text: '如果那一幕真的发生了，你会觉得自己是一个“失败的人”，还是觉得“只是暂时没收入”？' },
+        { role: 'user', text: '我觉得我会让我妈失望。她一直很以我为荣。' },
+        { role: 'ai', text: '所以比起没钱，你更怕的是她对你的看法？' },
+        { role: 'user', text: '对……其实我怕的不是找不到工作，是怕我妈失望。' },
+      ],
+      snapshot: {
+        title: '要不要辞职',
+        type: '职业',
+        hero_quote: '其实我怕的不是找不到工作，是怕我妈失望。',
+        essay: '你今天来，带着这件事：\n\n我想辞职，但怕养不活自己。\n\n问了十几轮之后，你自己停了一下。\n\n说：其实我怕的不是找不到工作，是怕我妈失望。\n\n那句话出现得很晚。但可能是今天最重要的。',
+        annotations: [
+          { anchor: '我想辞职，但怕养不活自己。', type: 'observation', comment: '这是今天的起点，也可能是表面问题。' },
+          { anchor: '其实我怕的不是找不到工作，是怕我妈失望。', type: 'reflection', comment: '如果它才是真问题，前面那些纠结是不是你想看到的最坏情况？' },
+        ],
+        schema_version: 'v3',
+        confidence: 6,
+      },
+    },
+    {
+      id: 'm2',
+      name: '素材2：工具种草型（搬去上海）',
+      homeInput: '老板问我要不要去上海总部，我不知道怎么选。',
+      dialogue: [
+        { role: 'ai', text: '如果把“去”和“不去”暂时放一边，你现在脑子里最乱的是什么？' },
+        { role: 'user', text: '收入和房租。上海工资高，但房租也贵，算下来没差多少。' },
+        { role: 'ai', text: '那除去这些数字，有什么是你在深圳有、在上海可能没有的？' },
+        { role: 'user', text: '朋友吧。还有……一种熟悉感。' },
+        { role: 'ai', text: '熟悉感对你意味着什么？' },
+        { role: 'user', text: '在上海没人认识真正的我，但也许……我会更喜欢那个重新开始的自己。' },
+      ],
+      snapshot: {
+        title: '要不要搬去上海',
+        type: '人生',
+        hero_quote: '换一个城市，我会不会更喜欢自己。',
+        essay: '你今天来，带着这件事：\n\n老板问我要不要去上海总部，我不知道怎么选。\n\n你说了很多关于收入和房租的算术。\n\n然后你自己补了一句：\n\n“但我其实想知道，换一个城市，我会不会更喜欢自己。”\n\n那一刻，所有的比较都轻了一点。',
+        annotations: [
+          { anchor: '收入和房租', type: 'observation', comment: '理性的计算帮助你拖延决定，却没有帮你找到答案。' },
+          { anchor: '换一个城市，我会不会更喜欢自己。', type: 'reflection', comment: '真正在意的，不是城市，而是你想成为谁。' },
+        ],
+        schema_version: 'v3',
+        confidence: 5,
+      },
+    },
+    {
+      id: 'm3',
+      name: '素材3：情绪共鸣型（离开北京）',
+      homeInput: '我在北京待了五年，最近在想要不要回去。',
+      dialogue: [
+        { role: 'ai', text: '“回去”对你来说，是回到一个城市，还是回到一种生活？' },
+        { role: 'user', text: '回到一种生活吧。我爸妈在，同学也在，节奏慢一点。' },
+        { role: 'ai', text: '那种生活里，有什么是你现在最想念的？' },
+        { role: 'user', text: '被照顾。还有不用假装自己过得很好。' },
+        { role: 'ai', text: '那留在这里，你又在保护什么？' },
+        { role: 'user', text: '我怕回去了就再也出不来了。' },
+      ],
+      snapshot: {
+        title: '要不要离开北京',
+        type: '人生',
+        hero_quote: '我怕的不是留不下，是怕回去了就再也出不来了。',
+        essay: '你今天来，带着这件事：\n\n我在北京待了五年，最近在想要不要回去。\n\n你说了很多关于房价、父母和年龄的话。\n\n然后你停了很久，说：\n\n“我怕的不是留不下，是怕回去了就再也出不来了。”\n\n那一刻，你好像不是在选择城市。是在选择你想成为什么样的人。',
+        annotations: [
+          { anchor: '房价、父母和年龄', type: 'observation', comment: '每一个都是真实压力，却都不是唯一的答案。' },
+          { anchor: '怕回去了就再也出不来了', type: 'reflection', comment: '你害怕的，是选择本身变成终点。' },
+        ],
+        schema_version: 'v3',
+        confidence: 4,
+      },
+    },
+    {
+      id: 'm4',
+      name: '素材4：方法论型（接offer）',
+      homeInput: '有两个offer，一个稳定一个冒险，我不知道怎么选。',
+      dialogue: [
+        { role: 'ai', text: '如果完全不看薪资和头衔，这两个选择分别给你什么感觉？' },
+        { role: 'user', text: '稳定那个让我觉得安全，但有点闷。冒险那个让我兴奋，也害怕。' },
+        { role: 'ai', text: '这种“兴奋又害怕”的体验，你熟悉吗？' },
+        { role: 'user', text: '熟悉……我以前每次选害怕的，后来都后悔。' },
+        { role: 'ai', text: '那这次你“后悔”的会是什么？' },
+        { role: 'user', text: '我好像一直选让我害怕的，不是因为想要，是因为不敢承认我想要安全的。' },
+      ],
+      snapshot: {
+        title: '要不要接这个 offer',
+        type: '职业',
+        hero_quote: '我好像一直选让我害怕的。',
+        essay: '你今天来，带着这件事：\n\n有两个 offer，一个稳定一个冒险，我不知道怎么选。\n\n你比较了很久薪资和通勤。\n\n然后你说了一句让对话停下来的话：\n\n“稳定的那个让我害怕，冒险的那个让我兴奋。我好像一直选让我害怕的。”\n\n那一刻，你看见了自己的模式。',
+        annotations: [
+          { anchor: '比较了很久薪资和通勤', type: 'observation', comment: '表格帮你做决策，却常常掩盖真正的渴望。' },
+          { anchor: '好像一直选让我害怕的', type: 'reflection', comment: '你不是在选 offer，你是在重复一个关于自己的故事。' },
+        ],
+        schema_version: 'v3',
+        confidence: 6,
+      },
+    },
+    {
+      id: 'm5',
+      name: '素材5：UGC展示型（关系）',
+      homeInput: '我不知道这段关系还要不要继续。',
+      dialogue: [
+        { role: 'ai', text: '如果我问你“你还爱他吗”，你第一反应是什么？' },
+        { role: 'user', text: '我不知道。有时候爱，有时候觉得很累。' },
+        { role: 'ai', text: '“累”的这一刻，最消耗你的是什么？' },
+        { role: 'user', text: '每次有矛盾，我都得先低头。我觉得他根本不想理解我。' },
+        { role: 'ai', text: '如果三年后的你回看这段关系，你会怎么描述它？' },
+        { role: 'user', text: '我会说，那不是一段让我更喜欢自己的关系。' },
+      ],
+      snapshot: {
+        title: '要不要和他说清楚',
+        type: '关系',
+        hero_quote: '你不是不知道答案。',
+        essay: '你不是不知道答案。\n\n你是怕答案出来以后，关系就不是你想要的样子了。\n\n今天你终于说了一句：\n\n“那不是一段让我更喜欢自己的关系。”\n\n这句话本身，就是答案的一部分。',
+        annotations: [
+          { anchor: '怕答案出来以后', type: 'observation', comment: '你不是在等更多信息，你是在等勇气。' },
+          { anchor: '让我更喜欢自己的关系', type: 'reflection', comment: '关系的终点不是好坏，而是你是谁。' },
+        ],
+        schema_version: 'v3',
+        confidence: 5,
+      },
+    },
+    {
+      id: 'm6',
+      name: '素材6：场景切入型（副业）',
+      homeInput: '我想做副业，但不知道从哪里开始。',
+      dialogue: [
+        { role: 'ai', text: '先不问“做什么”。你做什么事情的时候，会忘记时间？' },
+        { role: 'user', text: '写东西吧。写的时候很安静，也没想着赚钱。' },
+        { role: 'ai', text: '如果钱完全不是问题，你会想尝试写什么？' },
+        { role: 'user', text: '可能写一些没人看的散文，或者帮人整理故事。' },
+        { role: 'ai', text: '“没人看”和“帮人整理故事”，哪个更让你有冲动？' },
+        { role: 'user', text: '我想做副业，不是因为缺钱，是想证明我不是只有工作这一面。' },
+      ],
+      snapshot: {
+        title: '我想搞副业，但不知道做什么',
+        type: '职业',
+        hero_quote: '我想证明我不是只有现在这一面。',
+        essay: '你今天来，带着这件事：\n\n我想做副业，但不知道从哪里开始。\n\n你列了很多技能和资源。\n\n然后你说：\n\n“我好像不是想多赚一份钱，我是想证明我不是只有现在这一面。”\n\n那一刻，副业变成了一个关于“我是谁”的问题。',
+        annotations: [
+          { anchor: '列了很多技能和资源', type: 'observation', comment: '能力盘点很理性，但找不到起点。' },
+          { anchor: '我不是只有现在这一面', type: 'reflection', comment: '副业不是出口，是身份。' },
+        ],
+        schema_version: 'v3',
+        confidence: 6,
+      },
+    },
+    {
+      id: 'm7',
+      name: '素材7：反常识型（分手）',
+      homeInput: '我不知道这段关系还要不要继续。',
+      dialogue: [
+        { role: 'ai', text: '如果我不问你“该不该分”，而是问你“理想的关系是什么样的”，你会怎么回答？' },
+        { role: 'user', text: '就是能感觉到自己被尊重，有话可以说。' },
+        { role: 'ai', text: '那现在这段关系里，是什么让你还在问这个问题？' },
+        { role: 'user', text: '我好像一直在等他变。' },
+        { role: 'ai', text: '“等他变”这件事，你等了多久了？' },
+        { role: 'user', text: '我是在害怕失去他，还是害怕承认我早就想走了？' },
+      ],
+      snapshot: {
+        title: '该不该分手',
+        type: '关系',
+        hero_quote: '我是在害怕失去他，还是害怕承认我早就想走了？',
+        essay: '你今天来，带着这件事：\n\n我不知道这段关系还要不要继续。\n\n你说了他的很多细节。\n\n然后你突然问了自己一句：\n\n“我是在害怕失去他，还是害怕承认我早就想走了？”\n\n那一刻，问题本身比答案更锋利。',
+        annotations: [
+          { anchor: '害怕失去他', type: 'observation', comment: '失去的痛苦真实，但不等于还想继续。' },
+          { anchor: '早就想走了', type: 'reflection', comment: '你等的不是答案，是被允许离开。' },
+        ],
+        schema_version: 'v3',
+        confidence: 5,
+      },
+    },
+    {
+      id: 'm8',
+      name: '素材8：极简对比型（辞职）',
+      homeInput: '我在纠结要不要辞职。',
+      dialogue: [
+        { role: 'ai', text: '如果直接问 AI “我该不该辞职”，你希望它怎么回答？' },
+        { role: 'user', text: '以前会希望它直接告诉我答案，但说完我还是很慌。' },
+        { role: 'ai', text: '那种“慌”是因为答案不对，还是因为你还没准备好做决定？' },
+        { role: 'user', text: '可能是我还没准备好。我其实需要的是一个理由。' },
+        { role: 'ai', text: '一个可以说服自己的理由？' },
+        { role: 'user', text: '我不是在找一个更好的选项，我是在找一个能说服自己的理由。' },
+      ],
+      snapshot: {
+        title: '要不要辞职',
+        type: '职业',
+        hero_quote: '我不是在找一个更好的选项，我是在找一个能说服自己的理由。',
+        essay: '你今天来，带着这件事：\n\n我在纠结要不要辞职。\n\n你问了 AI 很多问题，也回答了很多问题。\n\n最后你说：\n\n“我不是在找一个更好的选项，我是在找一个能说服自己的理由。”\n\n那一刻，你需要的不是答案，是勇气。',
+        annotations: [
+          { anchor: '问了 AI 很多问题', type: 'observation', comment: '信息越多，越难听见自己的声音。' },
+          { anchor: '能说服自己的理由', type: 'reflection', comment: '决定需要的不是理性，是承担。' },
+        ],
+        schema_version: 'v3',
+        confidence: 6,
+      },
+    },
+    {
+      id: 'm9',
+      name: '素材9：考研/学生党型',
+      homeInput: '我在考研、出国和工作之间反复横跳。',
+      dialogue: [
+        { role: 'ai', text: '如果抛开“哪条路更好”，你现在最怕的是什么？' },
+        { role: 'user', text: '怕选错。怕三年后回头看，发现当初不该这么选。' },
+        { role: 'ai', text: '“选错”的标准是谁的？你的，还是别人的？' },
+        { role: 'user', text: '其实我也不知道。我爸妈希望我考研，我朋友说要出国看看。' },
+        { role: 'ai', text: '所以比起“哪条路更好”，你更想知道什么？' },
+        { role: 'user', text: '我想知道哪条路失败了我也不会怪自己。' },
+      ],
+      snapshot: {
+        title: '毕业后该做什么',
+        type: '教育',
+        hero_quote: '我想知道哪条路失败了我也不会怪自己。',
+        essay: '你今天来，带着这件事：\n\n我在考研、出国和工作之间反复横跳。\n\n你比较了很久利弊。\n\n然后你说：\n\n“我好像不是想知道哪条路更好，我是想知道哪条路失败了我也不会怪自己。”\n\n那一刻，你害怕的不是选择，是后悔。',
+        annotations: [
+          { anchor: '比较了很久利弊', type: 'observation', comment: '列表很清楚，心却不清楚。' },
+          { anchor: '失败了我也不会怪自己', type: 'reflection', comment: '你想要的不是最优解，是能承担的选择。' },
+        ],
+        schema_version: 'v3',
+        confidence: 4,
+      },
+    },
+    {
+      id: 'm10',
+      name: '素材10：睡前仪式型',
+      homeInput: '我在犹豫明天要不要主动联系那个人。',
+      dialogue: [
+        { role: 'ai', text: '现在夜色很深，我们不急着要结论。你先说说，想联系他的冲动里，藏着什么？' },
+        { role: 'user', text: '怕错过。也怕打扰。' },
+        { role: 'ai', text: '“怕错过”和“怕打扰”，哪个更让你睡不着？' },
+        { role: 'user', text: '怕错过吧。但更深处是怕自己被拒绝。' },
+        { role: 'ai', text: '如果被拒绝了，你会怎么看自己？' },
+        { role: 'user', text: '我不是在等他回我，我是在等自己不再害怕被拒绝。' },
+      ],
+      snapshot: {
+        title: '今晚的小纠结',
+        type: '其他',
+        hero_quote: '我在等自己不再害怕被拒绝。',
+        essay: '你今天来，带着这件事：\n\n我在犹豫明天要不要主动联系那个人。\n\n你说了害怕打扰，也说了害怕错过。\n\n然后你说：\n\n“我不是在等他回我，我是在等自己不再害怕被拒绝。”\n\n今晚的结论不是要不要发消息。是看见了自己还在练习这件事。',
+        annotations: [
+          { anchor: '害怕打扰，也说了害怕错过', type: 'observation', comment: '两种恐惧在拉扯，都不是答案。' },
+          { anchor: '等自己不再害怕被拒绝', type: 'reflection', comment: '重要的不是消息发不发，是你和自己的关系。' },
+        ],
+        schema_version: 'v3',
+        confidence: 5,
+      },
+    },
+  ];
+
+  // ============================================================
+  //  渲染工具函数
+  // ============================================================
+  function escapeHtml(s) {
+    return String(s).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+  }
+  function nl2br(s) {
+    return escapeHtml(s).replace(/\n/g, '<br>');
+  }
+  function clampConfidence(c) {
+    const n = Number(c);
+    if (!Number.isFinite(n)) return 7;
+    return Math.max(1, Math.min(10, Math.round(n)));
+  }
+  function confidenceMeaning(c) {
+    if (c <= 2) return '还很迷茫';
+    if (c <= 4) return '有了方向，但心里没底';
+    if (c <= 6) return '隐隐知道想怎么选';
+    if (c <= 8) return '想清了大半';
+    return '心里非常笃定';
+  }
+
+  function renderAnnotatedEssay(essay, annotations) {
+    if (!essay) return '';
+    if (!annotations || annotations.length === 0) return nl2br(essay);
+    const sorted = [...annotations].sort((a, b) => (b.anchor?.length || 0) - (a.anchor?.length || 0));
+    let html = escapeHtml(essay);
+    for (const anno of sorted) {
+      if (!anno.anchor) continue;
+      const anchorHtml = escapeHtml(anno.anchor);
+      const idx = html.indexOf(anchorHtml);
+      if (idx >= 0) {
+        const before = html.substring(0, idx);
+        const after = html.substring(idx + anchorHtml.length);
+        const label = { reflection: '反映', observation: '观察', gentle_prompt: '轻引导' }[anno.type] || anno.type;
+        const span = `<span class="annotated">${anchorHtml}<span class="anno-tooltip"><span class="anno-tooltip-type">${escapeHtml(label)}</span><span class="anno-tooltip-comment">${escapeHtml(anno.comment)}</span></span></span>`;
+        html = before + span + after;
+      }
+    }
+    return html.replace(/\n/g, '<br>');
+  }
+
+  function renderV3SnapshotHtml(data, calDateStr, confidence) {
+    const dotsHtml = Array.from({ length: 10 }, (_, i) =>
+      `<div class="confidence-dot${i < confidence ? ' filled' : ''}"></div>`
+    ).join('');
+
+    const heroQuoteSection = data.hero_quote ? `
+      <div class="snapshot-section">
+        <div class="snapshot-eyebrow">你 说 出 来 最 重 的 那 句</div>
+        <div class="snapshot-quote-block">
+          <div class="snapshot-quote-mark">“</div>
+          <div class="snapshot-quote">${escapeHtml(data.hero_quote)}</div>
+          <div class="snapshot-quote-end">”</div>
+        </div>
+      </div>
+    ` : '';
+
+    const essayHtml = renderAnnotatedEssay(data.essay, data.annotations);
+
+    return `
+      <div class="snapshot-section">
+        <div class="snapshot-eyebrow-row">
+          <div class="snapshot-eyebrow">你 今 天 纠 结 的 是</div>
+          ${data.type ? `<div class="snapshot-tag">${escapeHtml(data.type)}</div>` : ''}
+        </div>
+        <div class="snapshot-body title">${escapeHtml(data.title || '我的决策')}</div>
+      </div>
+
+      ${heroQuoteSection}
+
+      <div class="snapshot-section">
+        <div class="snapshot-eyebrow">今 天 的 对 话</div>
+        <div class="snapshot-essay">${essayHtml}</div>
+      </div>
+
+      <div class="snapshot-section">
+        <div class="snapshot-eyebrow">你 今 天 的 信 心</div>
+        <div class="confidence-block">
+          <div class="confidence-dots">${dotsHtml}</div>
+          <div class="confidence-row">
+            <div class="confidence-num"><span class="num-target">${confidence}</span><small> / 10</small></div>
+            <div class="confidence-meaning">${confidenceMeaning(confidence)}</div>
+          </div>
+        </div>
+      </div>
+
+      <div class="calibration-block">
+        <div class="calibration-eyebrow">校 准 提 醒</div>
+        <div class="calibration-body">把这些放在心里。<br>3 个月后再回来，<br>看看那时候你怎么想。</div>
+        <div class="calibration-date">${calDateStr}</div>
+      </div>
+    `;
+  }
+
+  function renderHome(shot) {
+    return `
+      <section class="screen active" id="screen-home">
+        <div class="home-content">
+          <div class="logo">镜</div>
+          <h2 class="ask">今天，<br>想聊点什么？</h2>
+          <div class="home-input-shot">${escapeHtml(shot.homeInput)}</div>
+          <button class="hint-toggle on" data-on="true">
+            <span class="hint-dot"></span>
+            <span class="hint-label">显示提示</span>
+            <span class="hint-sub">卡住时给一些思考方向</span>
+          </button>
+          <button class="home-btn ready">开始对话</button>
+        </div>
+      </section>
+    `;
+  }
+
+  function renderDialogue(shot) {
+    const items = shot.dialogue.map((msg, i) => `
+      <div class="manual-msg ${msg.role}">
+        <div class="manual-role">${msg.role === 'ai' ? '镜' : '你'}</div>
+        <div class="manual-bubble">${escapeHtml(msg.text)}</div>
+      </div>
+    `).join('');
+
+    return `
+      <section class="screen active manual-dialogue-screen" id="screen-dialogue-${shot.id}">
+        <header class="dialogue-header">
+          <button class="back-btn">←</button>
+          <span class="brand-mark">镜</span>
+          <span class="top-bar-spacer"></span>
+        </header>
+        <div class="manual-dialogue">${items}</div>
+        <div class="status-bar">
+          <span class="phase-badge">FACTS</span>
+          <button class="history-toggle">回看 ↑</button>
+        </div>
+      </section>
+    `;
+  }
+
+  function renderSnapshot(shot) {
+    const now = new Date();
+    const calDate = new Date();
+    calDate.setMonth(calDate.getMonth() + 3);
+    const calDateStr = `${calDate.getFullYear()} 年 ${calDate.getMonth() + 1} 月 ${calDate.getDate()} 日`;
+    const confidence = clampConfidence(shot.snapshot.confidence);
+    return `
+      <section class="screen active" id="screen-snapshot-${shot.id}">
+        <header class="dialogue-header">
+          <button class="back-btn">←</button>
+          <span class="brand-mark">镜</span>
+          <span class="top-bar-spacer"></span>
+        </header>
+        <main class="snapshot-area">${renderV3SnapshotHtml(shot.snapshot, calDateStr, confidence)}</main>
+      </section>
+    `;
+  }
+
+  // ============================================================
+  //  页面渲染与导出
+  // ============================================================
+  function renderStage(view) {
+    const stage = document.getElementById('shotStage');
+    stage.innerHTML = '';
+    const shotId = document.getElementById('materialSelect').value;
+    const shots = shotId === 'all' ? SHOTS : SHOTS.filter(s => s.id === shotId);
+
+    for (const shot of shots) {
+      const panels = view === 'all' ? ['home', 'dialogue', 'snapshot'] : [view];
+      for (const panel of panels) {
+        const label = document.createElement('div');
+        label.className = 'shot-label';
+        label.textContent = `${shot.name} · ${panel === 'home' ? '首页' : panel === 'dialogue' ? '对话页' : '决策快照'}`;
+        stage.appendChild(label);
+
+        const frame = document.createElement('div');
+        frame.className = 'shot-frame';
+        frame.dataset.shot = shot.id;
+        frame.dataset.panel = panel;
+
+        const inner = document.createElement('div');
+        inner.className = 'shot-frame-inner' + (panel === 'dialogue' ? ' dialogue-capture' : '');
+        inner.id = `frame-${shot.id}-${panel}`;
+
+        if (panel === 'home') inner.innerHTML = renderHome(shot);
+        else if (panel === 'dialogue') inner.innerHTML = renderDialogue(shot);
+        else inner.innerHTML = renderSnapshot(shot);
+
+        frame.appendChild(inner);
+        stage.appendChild(frame);
+      }
+    }
+  }
+
+  function initControls() {
+    const materialSelect = document.getElementById('materialSelect');
+    materialSelect.innerHTML = '<option value="all">全部 10 组</option>' +
+      SHOTS.map(s => `<option value="${s.id}">${s.name}</option>`).join('');
+
+    materialSelect.addEventListener('change', () => renderStage(document.getElementById('viewSelect').value));
+    document.getElementById('viewSelect').addEventListener('change', (e) => renderStage(e.target.value));
+  }
+
+  async function exportCurrent() {
+    const frames = document.querySelectorAll('.shot-frame');
+    if (!frames.length) return;
+    for (const frame of frames) {
+      await exportFrame(frame);
+    }
+  }
+
+  async function exportAll() {
+    // 临时渲染全部
+    const prevView = document.getElementById('viewSelect').value;
+    const prevShot = document.getElementById('materialSelect').value;
+    document.getElementById('viewSelect').value = 'all';
+    document.getElementById('materialSelect').value = 'all';
+    renderStage('all');
+    await new Promise(r => setTimeout(r, 300));
+    await exportCurrent();
+    document.getElementById('viewSelect').value = prevView;
+    document.getElementById('materialSelect').value = prevShot;
+    renderStage(prevView);
+  }
+
+  async function exportFrame(frame) {
+    if (typeof html2canvas !== 'function') {
+      alert('截图组件还没加载完');
+      return;
+    }
+    const inner = frame.querySelector('.shot-frame-inner');
+    const spinner = document.createElement('div');
+    spinner.className = 'image-preview-spinner';
+    spinner.textContent = '正在导出…';
+    document.body.appendChild(spinner);
+
+    try {
+      if (document.fonts && document.fonts.ready) await document.fonts.ready;
+      // 临时展开父容器，让 html2canvas 捕获完整内容
+      const originalFrameHeight = frame.style.height;
+      const originalInnerHeight = inner.style.height;
+      const originalInnerOverflow = inner.style.overflow;
+      frame.style.height = 'auto';
+      inner.style.height = 'auto';
+      inner.style.overflow = 'visible';
+
+      const canvas = await html2canvas(inner, {
+        backgroundColor: '#0b0b0d',
+        scale: 2,
+        useCORS: true,
+        logging: false,
+        windowWidth: inner.scrollWidth,
+        windowHeight: inner.scrollHeight,
+      });
+
+      frame.style.height = originalFrameHeight;
+      inner.style.height = originalInnerHeight;
+      inner.style.overflow = originalInnerOverflow;
+
+      const link = document.createElement('a');
+      link.download = `mindmirror-${frame.dataset.shot}-${frame.dataset.panel}.png`;
+      link.href = canvas.toDataURL('image/png');
+      link.click();
+    } finally {
+      spinner.remove();
+    }
+  }
+
+  window.addEventListener('DOMContentLoaded', () => {
+    initControls();
+    renderStage('home');
+  });
+</script>
+</body>
+</html>
