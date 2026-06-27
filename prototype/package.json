@@ -1,19 +1,21 @@
 {
   "name": "prototype",
   "version": "1.0.0",
-  "main": "index.js",
+  "type": "module",
   "scripts": {
-    "start": "node server.js",
-    "dev": "node server.js",
-    "test": "echo \"Error: no test specified\" && exit 1"
+    "dev": "wrangler pages dev public",
+    "deploy": "wrangler pages deploy public",
+    "d1:migrate": "wrangler d1 migrations apply jing-mindmirror-db",
+    "d1:create": "wrangler d1 create jing-mindmirror-db"
   },
   "keywords": [],
   "author": "",
   "license": "ISC",
   "description": "",
   "dependencies": {
-    "cors": "^2.8.6",
-    "dotenv": "^17.4.2",
-    "express": "^5.2.1"
+    "hono": "^4.4.0"
+  },
+  "devDependencies": {
+    "wrangler": "^3.60.0"
   }
 }

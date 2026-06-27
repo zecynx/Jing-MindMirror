@@ -1,0 +1,13 @@
+name = "jing-mindmirror"
+pages_build_output_dir = "public"
+compatibility_date = "2024-06-27"
+
+[[d1_databases]]
+binding = "DB"
+database_name = "jing-mindmirror-db"
+database_id = "your-database-id-here"
+migrations_dir = "migrations"
+
+[vars]
+LLM_BASE_URL = "https://api.deepseek.com"
+LLM_MODEL = "deepseek-chat"
