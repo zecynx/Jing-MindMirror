@@ -58,8 +58,8 @@ test-data/
 # === 本地备份(临时,定期手动清理) ===
 .backup/
 
-# === superpowers 工作流计划文档(本地工作产物,不入库) ===
-docs/superpowers/plans/
+# === superpowers ===
+docs/superpowers
 
-# === 小红书推广截图(营销素材,不入库) ===
+# === 素材截图 ===
 screenshots/
