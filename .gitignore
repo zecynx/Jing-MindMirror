@@ -11,7 +11,8 @@ node_modules/
 npm-debug.log*
 yarn-debug.log*
 yarn-error.log*
-package-lock.json
+/package-lock.json          # 仅忽略仓库根目录的 lock（旧 Express 原型未使用）
+!prototype/package-lock.json # Cloudflare Pages 需要 prototype 下的精确依赖快照
 
 # === 操作系统 ===
 .DS_Store
@@ -56,3 +57,6 @@ test-data/
 
 # === 本地备份(临时,定期手动清理) ===
 .backup/
+
+# === superpowers 工作流计划文档(本地工作产物,不入库) ===
+docs/superpowers/plans/
