@@ -5,7 +5,7 @@ compatibility_date = "2024-06-27"
 [[d1_databases]]
 binding = "DB"
 database_name = "jing-mindmirror-db"
-database_id = "your-database-id-here"
+database_id = "84649dd2-8bff-48ce-94e2-577c96b44c6c"
 migrations_dir = "migrations"
 
 [vars]
