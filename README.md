@@ -5,6 +5,15 @@
 
 不是聊天机器人，不给建议，不替你做决定 —— 它只负责把你脑子里那些没说清楚的东西问出来。
 
+**▶️ 在线体验（无需安装，打开即用）：https://jing-mindmirror.pages.dev/**
+
+> 这是部署在 Cloudflare Pages 上的现成版本，方便你直接试一试。
+> 在线版的对话数据存储在 Cloudflare（D1 数据库），仅供体验，请勿写入敏感信息；想让数据完全留在自己机器上，按下面的步骤本地部署即可。
+
+<p align="center">
+  <img src="images/jing_hp.png" alt="镜 · MindMirror — 起始屏" width="760">
+</p>
+
 ## 它长什么样
 
 - **起始屏**：写下今天卡住的事
@@ -12,7 +21,7 @@
 - **决策快照**：聊完生成一张可保存/截图的卡片，记录你想清楚的结论
 - **历史决策**：本地存档，随时回看自己的思考轨迹
 
-数据全部存在你自己电脑上的 JSON 文件里（`prototype/data/`），不上传任何服务器。
+**本地自托管**时，数据全部存在你自己电脑上的 JSON 文件里（`prototype/data/`），不上传任何服务器；[在线体验版](https://jing-mindmirror.pages.dev/)则把数据存在 Cloudflare D1（仅供试用）。
 
 ---
 
@@ -26,8 +35,8 @@
 ### 1. 克隆 + 装依赖
 
 ```bash
-git clone https://github.com/<your-name>/MindMirror.git
-cd MindMirror/prototype
+git clone https://github.com/zecynx/Jing-MindMirror.git
+cd Jing-MindMirror/prototype
 npm install
 ```
 
@@ -73,7 +82,7 @@ npm start
 ## 目录结构
 
 ```
-MindMirror/
+Jing-MindMirror/
 ├── prototype/              # 代码主体（npm 命令都在这里跑）
 │   ├── server.js           # Express 入口
 │   ├── routes/             # API 路由（chat / conversations / system）
@@ -104,7 +113,8 @@ docker run -p 3000:3000 --env-file .env mindmirror
 不会。`.env` 已在 `.gitignore` 里，永远不会被提交。Key 只在你本地机器上、由后端代理调用 LLM。
 
 **Q：我的对话数据存哪里？**
-`prototype/data/` 下三个 JSON 文件：`users.json`、`conversations.json`、`events.json`。备份/迁移都直接拷走这个目录就行。
+- **本地自托管**：`prototype/data/` 下三个 JSON 文件（`users.json`、`conversations.json`、`events.json`），备份/迁移直接拷走这个目录就行。
+- **在线体验版**：存在 Cloudflare D1 数据库里（不在你本地），仅供试用，别写入敏感信息。
 
 **Q：能不能换成本地模型？**
 可以，任何兼容 OpenAI Chat Completions 协议的接口都行（Ollama、LM Studio、vLLM 等），改 `LLM_BASE_URL` 就完事。
